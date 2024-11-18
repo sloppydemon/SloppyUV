@@ -1,5 +1,6 @@
 import bpy
 import bpy_extras
+from bpy_extras import bmesh_utils
 import bmesh
 import math
 import mathutils
@@ -286,25 +287,25 @@ class SloppyProperties(bpy.types.PropertyGroup):
         name = "Space Seam",
         description = "Space UV points along edges evenly",
         default = True
-        )
+        ) # type: ignore
     
     relax_inner : bP(
         name = "Relax Inner",
         description = "Relax inner (non-boundary) UVs (UniV add-on required!)",
         default = True
-        )
+        ) # type: ignore
     
     verbose : bP(
         name = "Verbose",
         description = "Prints progress info to System Console",
         default = False
-        )
+        ) # type: ignore
     
     align_uv_geo_axis_prev : bvP(
         name = "3D Axis (Previous)",
         description = "Just for coding purposes",
         subtype = 'XYZ'
-        )
+        ) # type: ignore
     
     align_uv_geo_axis : bvP(
         name = "View Axis",
@@ -313,7 +314,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
         subtype = 'XYZ',
         size = 2,
         update=update_uvs_geo_axis
-        )
+        ) # type: ignore
     
     align_uv_axis_prev : bvP(
         name = "UV Axis (Previous)",
@@ -321,7 +322,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
         default = (False, True),
         subtype = 'XYZ',
         size = 2,
-        )
+        ) # type: ignore
     
     align_uv_axis : bvP(
         name = "UV Axis",
@@ -330,12 +331,12 @@ class SloppyProperties(bpy.types.PropertyGroup):
         subtype = 'XYZ',
         size = 2,
         update = update_uv_axis
-        )
+        ) # type: ignore
     
     align_uvs_use_geo : bP(
         name = "Use geometry to align UVs",
         default = False,
-        )
+        ) # type: ignore
     
     scale_geo_size : fvP(
         name = "3D Size",
@@ -344,7 +345,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
         precision = 4,
         subtype = 'XYZ',
         size = 2,
-        )
+        ) # type: ignore
     
     scale_geo_selected_real : fvP(
         name = "Actual 3D Size",
@@ -353,7 +354,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
         precision = 4,
         subtype = 'XYZ',
         size = 3,
-        )
+        ) # type: ignore
     
     scale_geo_edge_lengths_real : fvP(
         name = "Actual 3D Size",
@@ -362,7 +363,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
         precision = 4,
         subtype = 'XYZ',
         size = 2,
-        )
+        ) # type: ignore
     
     scale_geo_size_real : fvP(
         name = "Actual 3D Size",
@@ -371,21 +372,21 @@ class SloppyProperties(bpy.types.PropertyGroup):
         precision = 4,
         subtype = 'XYZ',
         size = 3,
-        )
+        ) # type: ignore
     
     scale_uv_edge_lengths : fvP(
         name = "Selected UV Edges Length",
         default = (1.0, 1.0),
         subtype = 'XYZ',
         size = 2,
-        )
+        ) # type: ignore
     
     scale_uv_selected_lengths : fvP(
         name = "Selected UVs Length",
         default = (1.0, 1.0),
         subtype = 'XYZ',
         size = 2,
-        )
+        ) # type: ignore
     
     scale_uv_size : fvP(
         name = "UV Size",
@@ -394,7 +395,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
         precision = 4,
         subtype = 'XYZ',
         size = 2,
-        )
+        ) # type: ignore
     
     scale_uv_size_current : fvP(
         name = "Current UV Size",
@@ -403,7 +404,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
         precision = 4,
         subtype = 'XYZ',
         size = 2,
-        )
+        ) # type: ignore
     
     scale_uv_aspect : fvP(
         name = "UV Aspect Ratio",
@@ -416,7 +417,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
         precision = 4,
         subtype = 'XYZ',
         size = 2,
-        )
+        ) # type: ignore
     
     scale_uv_geo_relative : fvP(
         name = "UV Relative to 3D",
@@ -425,7 +426,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
         precision = 4,
         subtype = 'XYZ',
         size = 2,
-        )
+        ) # type: ignore
     
     scale_calc_uv_axis : bvP(
         name = "UV Axis",
@@ -434,7 +435,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
         subtype = 'XYZ',
         size = 2,
         update = update_uv_axis_scaling
-        )
+        ) # type: ignore
     
     scale_calc_uv_axis_prev : bvP(
         name = "UV Axis",
@@ -442,7 +443,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
         default = (True, False),
         subtype = 'XYZ',
         size = 2,
-        )
+        ) # type: ignore
     
     scale_calc_uv_corner : fvP(
         name = "Least Counds Corner",
@@ -450,49 +451,49 @@ class SloppyProperties(bpy.types.PropertyGroup):
         default = (True, False),
         subtype = 'XYZ',
         size = 2,
-        )
+        ) # type: ignore
     
     scale_geo_space_view : bP(
         name = "View",
         description = "Calculate scaling in 3D View (automatically maps view XY to UV)", 
         default = True,
         update = update_scale_view
-        )
+        ) # type: ignore
     
     scale_geo_space_global : bP(
         name = "Global",
         description = "Calculate scaling in global space", 
         default = False,
         update = update_scale_global
-        )
+        ) # type: ignore
     
     scale_geo_space_object : bP(
         name = "Object",
         description = "Calculate scaling in object space", 
         default = False,
         update = update_scale_object
-        )
+        ) # type: ignore
     
     scale_calc_island : bP(
         name = "Island",
         description = "Calculate X and Y from vertices linked to UV island boundary points", 
         default = False,
         update = update_scale_island
-        )
+        ) # type: ignore
     
     scale_calc_selected : bP(
         name = "Select",
         description = "Calculate X and Y from vertices linked to boundary points of selected UVs", 
         default = False,
         update = update_scale_selected
-        )
+        ) # type: ignore
     
     scale_calc_edge_length : bP(
         name = "Edges Length",
         description = "Calculate X or Y from sum of lengths of edges connected to selected UVs", 
         default = True,
         update = update_scale_length
-        )
+        ) # type: ignore
     
     scale_uv_x_geo_axis : bvP(
         name = "X",
@@ -501,7 +502,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
         subtype = 'XYZ',
         size = 3,
         update = update_swizzle_x_axis
-        )
+        ) # type: ignore
     
     scale_uv_x_geo_axis_prev : bvP(
         name = "X",
@@ -509,7 +510,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
         default = (True, False, False),
         subtype = 'XYZ',
         size = 3,
-        )
+        ) # type: ignore
     
     scale_uv_y_geo_axis : bvP(
         name = "Y",
@@ -518,7 +519,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
         subtype = 'XYZ',
         size = 3,
         update = update_swizzle_y_axis
-        )
+        ) # type: ignore
     
     scale_uv_y_geo_axis_prev : bvP(
         name = "Y",
@@ -526,39 +527,39 @@ class SloppyProperties(bpy.types.PropertyGroup):
         default = (False, True, False),
         subtype = 'XYZ',
         size = 3,
-        )
+        ) # type: ignore
     
     scale_uv_real_world : bP(
         name = "Real World Scale",
         description = "Scale Uvs to real world scale", 
         default = False,
         update = update_scale_uv_real_world
-        )
+        ) # type: ignore
     
     scale_uv_to_bounds : bP(
         name = "Scale to Bounds",
         description = "Scale result to bounds", 
         default = True,
         update = update_scale_uv_to_bounds
-        )
+        ) # type: ignore
     
     align_uv_scale_to_bounds : bP(
         name = "Scale to Bounds",
         description = "Scale result to bounds", 
         default = True
-        )
+        ) # type: ignore
     
     align_uv_scale_to_bounds_by_greatest : bP(
         name = "Scale by Greatest Bound",
         description = "Scale uniformly to greatest bound", 
         default = True
-        )
+        ) # type: ignore
     
     scale_uv_edge_direction : bP(
         name = "Scale Along Vector of Edges",
         description = "When in Edge Length Mode, scale UVs in directions of edges used for calculation", 
         default = False,
-        )
+        ) # type: ignore
     
     scale_uv_edge_direction_x : fvP(
         name = "Edge Direction X",
@@ -567,7 +568,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
         precision = 4,
         subtype = 'XYZ',
         size = 2
-        )
+        ) # type: ignore
     
     scale_uv_edge_direction_y : fvP(
         name = "Edge Direction Y",
@@ -576,32 +577,32 @@ class SloppyProperties(bpy.types.PropertyGroup):
         precision = 4,
         subtype = 'XYZ',
         size = 2
-        )
+        ) # type: ignore
     
     update_axis_switch : bP(
         name = "Axis Updating",
         default = False,
-        )
+        ) # type: ignore
     
     update_scale_switch : bP(
         name = "Scale Updating",
         default = False,
-        )
+        ) # type: ignore
     
     sloppy_error_msg_heading : sP(
         name = "Error Message Heading",
         default = "Error!",
-        )
+        ) # type: ignore
     
     sloppy_error_msg : sP(
         name = "Error Message",
         default = "Unknonwn error occured.",
-        )
+        ) # type: ignore
     
     current_sort_axis : sP(
         name = "Current Sort Axis",
         default = "",
-        )
+        ) # type: ignore
 
 class SloppyUVPanel(bpy.types.Panel):
     bl_idname = "UV_PT_SloppyUVPanel"
@@ -836,9 +837,19 @@ class SloppyCalcScale(bpy.types.Operator):
         bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
         uv_layer = bm.loops.layers.uv.verify()
         
-        # need to find a way to get 3D view without using name
+        # find view3d region and space
         def viewco(vec):
-            outco = bpy_extras.view3d_utils.location_3d_to_region_2d(bpy.data.screens['UV Editing'].areas[1].regions[0], bpy.data.screens['UV Editing'].areas[3].spaces[0].region_3d, vec)
+            view3d_region = None
+            view3d = None
+            for scr in bpy.data.screens:
+                for ar in scr.areas:
+                    if ar.type == 'VIEW_3D':
+                        view3d_region = ar.regions[0]
+                        for spc in ar.spaces:
+                            if spc.type == 'VIEW_3D':
+                                view3d = spc.region_3d
+                                break
+            outco = bpy_extras.view3d_utils.location_3d_to_region_2d(view3d_region, view3d, vec)
             return outco
         
         def sort_loops_geo(e):
@@ -1116,9 +1127,19 @@ class SloppyAlignUVs(bpy.types.Operator):
         CURSOR_UP = '\033[F'
         ERASE_LINE = '\033[K'
         
-        # need to find a way to get 3D view without using name
+        # find view3d region and space
         def viewco(vec):
-            outco = bpy_extras.view3d_utils.location_3d_to_region_2d(bpy.data.screens['UV Editing'].areas[1].regions[0], bpy.data.screens['UV Editing'].areas[3].spaces[0].region_3d, vec)
+            view3d_region = None
+            view3d = None
+            for scr in bpy.data.screens:
+                for ar in scr.areas:
+                    if ar.type == 'VIEW_3D':
+                        view3d_region = ar.regions[0]
+                        for spc in ar.spaces:
+                            if spc.type == 'VIEW_3D':
+                                view3d = spc.region_3d
+                                break
+            outco = bpy_extras.view3d_utils.location_3d_to_region_2d(view3d_region, view3d, vec)
             return outco
         
         def sort_loops(e):
@@ -1725,7 +1746,19 @@ class PeltUVs(bpy.types.Operator):
         
         return {"FINISHED"}
 
-classes = [SloppyProperties, SloppyErrorDialog, SloppyUVPanel, SloppyUVAlignPanel, SloppyUVScalePanel, SloppyPeltPanel, SloppyDebugPanel, PeltUVs, SloppyCalcScale, SloppyApplyScale, SloppyAlignUVsGeo, SloppyAlignUVsUV, SloppyAlignUVs]
+classes = [SloppyProperties,
+           SloppyErrorDialog,
+           SloppyUVPanel,
+           SloppyUVAlignPanel,
+           SloppyUVScalePanel,
+           SloppyPeltPanel,
+           SloppyDebugPanel,
+           PeltUVs,
+           SloppyCalcScale,
+           SloppyApplyScale,
+           SloppyAlignUVsGeo,
+           SloppyAlignUVsUV,
+           SloppyAlignUVs]
 
 def register():
     for cls in classes:

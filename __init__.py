@@ -18,6 +18,8 @@ bl_info = {
     "category": "User Interface",
 }
 
+from . import SloppySeamGen
+
 class SloppyProperties(bpy.types.PropertyGroup):
     
     iP = bpy.props.IntProperty
@@ -28,8 +30,24 @@ class SloppyProperties(bpy.types.PropertyGroup):
     bvP = bpy.props.BoolVectorProperty
     sP = bpy.props.StringProperty
     
-    # update function for uv alignment 3D view axis, to ensure only one is selected
+    def viewco(self, vec):
+        '''Fetches (TODO: active or) any View3D region and space and outputs the input vector mapped
+        to that 3D view.'''
+        view3d_region = None
+        view3d = None
+        for scr in bpy.data.screens:
+            for ar in scr.areas:
+                if ar.type == 'VIEW_3D':
+                    view3d_region = ar.regions[0]
+                    for spc in ar.spaces:
+                        if spc.type == 'VIEW_3D':
+                            view3d = spc.region_3d
+                            break
+        outco = bpy_extras.view3d_utils.location_3d_to_region_2d(view3d_region, view3d, vec)
+        return outco
+    
     def update_uvs_geo_axis(self, context):
+        '''Update function for UV alignment 3D view axis, to ensure only one is selected.'''
         if self.update_axis_switch == False:
             self.update_axis_switch = True
             unchanged = []
@@ -51,8 +69,8 @@ class SloppyProperties(bpy.types.PropertyGroup):
             self.update_axis_switch = False
         return None
     
-    # update function for uv alignment axis, to ensure only one is selected
     def update_uv_axis(self, context):
+        '''Update function for UV alignment axis, to ensure only one is selected.'''
         if self.update_axis_switch == False:
             self.update_axis_switch = True
             unchanged = []
@@ -74,8 +92,8 @@ class SloppyProperties(bpy.types.PropertyGroup):
             self.update_axis_switch = False
         return None
     
-    # update function for uv scaling axis, to ensure only one is selected
     def update_uv_axis_scaling(self, context):
+        '''Update function for UV scaling axis, to ensure only one is selected.'''
         if self.update_axis_switch == False:
             self.update_axis_switch = True
             unchanged = []
@@ -98,8 +116,8 @@ class SloppyProperties(bpy.types.PropertyGroup):
             self.update_scalings(context)
         return None
     
-    # update function for 3d axis swizzle for x axis, to ensure only one is selected
     def update_swizzle_x_axis(self, context):
+        '''Update function for 3D axis swizzle for X axis, to ensure only one is selected.'''
         if self.update_axis_switch == False:
             self.update_axis_switch = True
             unchanged = []
@@ -122,8 +140,8 @@ class SloppyProperties(bpy.types.PropertyGroup):
             self.update_scalings(context)
         return None
     
-    # update function for 3d axis swizzle for x axis, to ensure only one is selected
     def update_swizzle_y_axis(self, context):
+        '''Update function for 3D axis swizzle for Y axis, to ensure only one is selected.'''
         if self.update_axis_switch == False:
             self.update_axis_switch = True
             unchanged = []
@@ -146,8 +164,8 @@ class SloppyProperties(bpy.types.PropertyGroup):
             self.update_scalings(context)
         return None
     
-    # update function for seleecting island mode, to ensure only one mode is active
     def update_scale_island(self, context):
+        '''Update function for seleecting island mode, to ensure only one mode is active.'''
         if self.update_scale_switch == False:
             self.update_scale_switch = True
             if self.scale_calc_island == True:
@@ -157,8 +175,8 @@ class SloppyProperties(bpy.types.PropertyGroup):
         self.update_scalings(context)
         return None
     
-    # update function for seleecting selected UVs mode, to ensure only one mode is active
     def update_scale_selected(self, context):
+        '''Update function for seleecting selected UVs mode, to ensure only one mode is active.'''
         if self.update_scale_switch == False:
             self.update_scale_switch = True
             if self.scale_calc_selected == True:
@@ -168,8 +186,8 @@ class SloppyProperties(bpy.types.PropertyGroup):
         self.update_scalings(context)
         return None
     
-    # # update function for seleecting edge length mode, to ensure only one mode is active
     def update_scale_length(self, context):
+        '''Update function for seleecting edge length mode, to ensure only one mode is active.'''
         if self.update_scale_switch == False:
             self.update_scale_switch = True
             if self.scale_calc_edge_length == True:
@@ -187,8 +205,9 @@ class SloppyProperties(bpy.types.PropertyGroup):
         self.update_scalings(context)
         return None
     
-    # update function for seleecting viewport transform space, to ensure only one transfrom space is active
     def update_scale_view(self, context):
+        '''update function for seleecting viewport transform space, to ensure only one
+        transform space is active.'''
         if self.update_scale_switch == False:
             self.update_scale_switch = True
             if self.scale_geo_space_view == True:
@@ -206,8 +225,9 @@ class SloppyProperties(bpy.types.PropertyGroup):
         self.update_scalings()
         return None
     
-    # update function for seleecting global transform space, to ensure only one transfrom space is active
     def update_scale_global(self, context):
+        '''Update function for seleecting global transform space, to ensure only one
+        transform space is active.'''
         if self.update_scale_switch == False:
             self.update_scale_switch = True
             if self.scale_geo_space_global  == True:
@@ -217,8 +237,9 @@ class SloppyProperties(bpy.types.PropertyGroup):
         self.update_scalings(context)
         return None
     
-    # update function for seleecting object transform space, to ensure only one transfrom space is active
     def update_scale_object(self, context):
+        '''Update function for seleecting object transform space, to ensure only one
+        transform space is active.'''
         if self.update_scale_switch == False:
             self.update_scale_switch = True
             if self.scale_geo_space_object  == True:
@@ -236,8 +257,8 @@ class SloppyProperties(bpy.types.PropertyGroup):
         self.update_scalings(context)
         return None
     
-    # update calculation results
     def update_scalings(self, context):
+        '''Update calculation results.'''
         some_as = []
         some_bs = []
         for a in self.scale_uv_x_geo_axis:
@@ -280,7 +301,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
             self.scale_uv_geo_relative[0] = self.scale_uv_size[0] / self.scale_geo_size[0]
             self.scale_uv_geo_relative[1] = self.scale_uv_size[1] / self.scale_geo_size[1]
         
-            
+
         return None
     
     space_edges : bP(
@@ -1758,7 +1779,8 @@ classes = [SloppyProperties,
            SloppyApplyScale,
            SloppyAlignUVsGeo,
            SloppyAlignUVsUV,
-           SloppyAlignUVs]
+           SloppyAlignUVs,
+           SloppySeamGen]
 
 def register():
     for cls in classes:

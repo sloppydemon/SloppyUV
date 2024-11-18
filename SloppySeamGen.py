@@ -254,13 +254,13 @@ class SloppySeamGen(bpy.types.Operator):
 
         seams = []
 
-        rounds = 20
-        max_retries = 100
+        rounds = props.seamgen_rounds
+        max_retries = props.seamgen_retries
 
         near_parallel_edges = []
 
-        angle_threshold_start = -50
-        angle_threshold_end = -20
+        angle_threshold_start = props.seamgen_angle_threshold_start
+        angle_threshold_end = props.seamgen_angle_threshold_end
         angle_threshold_interval = angle_threshold_end - angle_threshold_start
         angle_threshold_point = 0
         if max_retries > 0:

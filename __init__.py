@@ -18,7 +18,7 @@ bl_info = {
     "category": "User Interface",
 }
 
-from SloppyUV.SloppySeamGen import SloppySeamGen
+from SloppyUV.SloppySeamGen import SloppySeamGen # type: ignore
 
 class SloppyProperties(bpy.types.PropertyGroup):
     
@@ -328,6 +328,38 @@ class SloppyProperties(bpy.types.PropertyGroup):
         soft_min = 0.0,
         max = 1.0,
         soft_max = 1.0
+        ) # type: ignore
+    
+    seamgen_rounds : iP (
+        name = "Iterations",
+        description = "Number of iterations of seam generation.",
+        default = 20
+        ) # type: ignore
+    
+    seamgen_retries : iP (
+        name = "Number of Retries",
+        description = "Number of retries at end of each iteration of seam generation.",
+        default = 100
+        ) # type: ignore
+    
+    seamgen_angle_threshold_start : fP (
+        name = "Angle Threshold Min",
+        description = "Angle threshold to start searching at.",
+        default = -50.0,
+        min = -180.0,
+        soft_min = -180.0,
+        max = 180.0,
+        soft_max = 180.0
+        ) # type: ignore
+    
+    seamgen_angle_threshold_end : fP (
+        name = "Angle Threshold Max",
+        description = "Angle threshold to end retries at.",
+        default = -20.0,
+        min = -180.0,
+        soft_min = -180.0,
+        max = 180.0,
+        soft_max = 180.0
         ) # type: ignore
     
     seamgen_angle_fac : fP (

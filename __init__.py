@@ -18,7 +18,7 @@ bl_info = {
     "category": "User Interface",
 }
 
-from . import SloppySeamGen
+from SloppyUV.SloppySeamGen import SloppySeamGen
 
 class SloppyProperties(bpy.types.PropertyGroup):
     
@@ -303,6 +303,52 @@ class SloppyProperties(bpy.types.PropertyGroup):
         
 
         return None
+    
+    seamgen_clear_seam : bP (
+        name = "Clear Seam",
+        description = "Clear existing seam before generating new seam.",
+        default = False
+        ) # type: ignore
+    
+    seamgen_ao_fac : fP (
+        name = "AO Influence",
+        description = "Influence of ambient occlusion attribute on seam generation.",
+        default = 0.0,
+        min = 0.0,
+        soft_min = 0.0,
+        max = 1.0,
+        soft_max = 1.0
+        ) # type: ignore
+    
+    seamgen_ed_fac : fP (
+        name = "Edge Density Influence",
+        description = "Influence of surrounding edge density attribute on seam generation.",
+        default = 0.0,
+        min = 0.0,
+        soft_min = 0.0,
+        max = 1.0,
+        soft_max = 1.0
+        ) # type: ignore
+    
+    seamgen_angle_fac : fP (
+        name = "Concavity Influence",
+        description = "Influence of edge angle concavity on seam generation.",
+        default = 1.0,
+        min = 0.0,
+        soft_min = 0.0,
+        max = 1.0,
+        soft_max = 1.0
+        ) # type: ignore
+    
+    seamgen_avg_angle_fac : fP (
+        name = "Average Concavity Influence",
+        description = "Influence of averaged edge angle concavity on seam generation.",
+        default = 0.0,
+        min = 0.0,
+        soft_min = 0.0,
+        max = 1.0,
+        soft_max = 1.0
+        ) # type: ignore
     
     space_edges : bP(
         name = "Space Seam",

@@ -14,399 +14,397 @@ class SloppySeamGen(bpy.types.Operator):
     
     def execute(self, context):
         props = context.scene.sloppy_props
+        dat = bpy.context.object.data
         bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
-        bpy.ops.mesh.select_linked(delimit={'SEAM'})
         uv_layer = bm.loops.layers.uv.verify()
+        islands = bmesh_utils.bmesh_linked_uv_islands(bm, uv_layer)
         
-        # circle to square function, maps circular coordinates to square coordinates
-        def circle_to_square(u, v):
-            x = 0
-            y = 0
-            u2 = u * u
-            v2 = v * v
-            twosqrt2 = 2.0 * math.sqrt(2.0)
-            subtermx = 2.0 + u2 - v2
-            subtermy = 2.0 - u2 + v2
-            termx1 = subtermx + u * twosqrt2
-            termx2 = subtermx - u * twosqrt2
-            termy1 = subtermy + v * twosqrt2
-            termy2 = subtermy - v * twosqrt2
-            if termx1 < 0 or termx2 < 0:
-                x = 0
+        attribute_dict = [
+            {"name": "AO", "type": "FLOAT_COLOR", "domain": "POINT", "layer": None},
+            {"name": "eAO", "type": "FLOAT", "domain": "EDGE", "layer": None},
+            {"name": "edge_density", "type": "FLOAT", "domain": "EDGE", "layer": None},
+            {"name": "avg_angle", "type": "FLOAT", "domain": "EDGE", "layer": None},
+            {"name": "cost_to_boundary", "type": "FLOAT", "domain": "EDGE", "layer": None},
+            {"name": "dist_to_boundary", "type": "FLOAT", "domain": "EDGE", "layer": None},
+            ]
+
+        def find_or_add_attribute(name, attr_type, attr_domain):
+            attribute = dat.attributes[0]
+            get_i = dat.attributes.find(name)
+            if get_i == -1:
+                attribute = dat.attributes.new(name=name, type=attr_type, domain=attr_domain)
             else:
-                x = (0.5 * math.sqrt(termx1)) - (0.5 * math.sqrt(termx2))
-            if termy1 < 0 or termy2 < 0:
-                y = 0
-            else:
-                y = (0.5 * math.sqrt(termy1)) - (0.5 * math.sqrt(termy2))
-            result = mathutils.Vector((x,y))
+                attribute = dat.attributes[get_i]
+            return attribute
+
+        def get_attribute_layer(name, attr_type, attr_domain):
+            layer = None
+            if attr_domain == "FACE":
+                if attr_type == "INT":
+                    layer = bm.faces.layers.int.get(name)
+                if attr_type == "FLOAT_VECTOR":
+                    layer = bm.faces.layers.float_vector.get(name)
+                if attr_type == "FLOAT":
+                    layer = bm.faces.layers.float.get(name)
+            if attr_domain == "POINT":
+                if attr_type == "FLOAT_COLOR":
+                    layer = bm.verts.layers.float_color.get(name)
+            if attr_domain == "EDGE":
+                if attr_type == "FLOAT":
+                    layer = bm.edges.layers.float.get(name)
+            return layer
+
+        def get_dict_layer(name):
+            layer = None
+            for dict in attribute_dict:
+                if dict["name"] == name:
+                    layer = dict["layer"]
+                    return layer
+
+        def remap_val(val, in_min, in_max, out_min, out_max):
+            in_interval = in_max - in_min
+            out_interval = out_max - out_min
+            in_val = val - in_min
+            in_fac = in_val / in_interval
+            out_val = out_min + (in_fac * out_interval)
+            if out_val > out_max:
+                out_val = out_max
+            if out_val < out_min:
+                out_val = out_min
+            return out_val
+
+        for nam in attribute_dict:
+            attr = find_or_add_attribute(nam["name"], nam["type"], nam["domain"])
+            nam["layer"] = get_attribute_layer(nam["name"], nam["type"], nam["domain"])
+
+        min_edge_density = 9999.0
+        max_edge_density = 0.0
+        min_avg_angle = 0.0
+        max_avg_angle = 0.0
+        ao_fac = props.seamgen_ao_fac
+        ed_fac = props.seamgen_ed_fac
+        angle_fac = props.seamgen_angle_fac
+        avg_angle_fac = props.seamgen_avg_angle_fac
+
+        def angle_sort(e):
+            result = 0.0
+            ao = remap_val(e[get_dict_layer("eAO")], 0, 1, -180, 180)
+            ed = remap_val(e[get_dict_layer("edge_density")], min_edge_density, max_edge_density, -180, 180)
+            if len(e.link_faces) > 1:
+                result += (ao * ao_fac)
+                result += (ed * ed_fac)
+                result += (math.degrees(e.calc_face_angle_signed()) * angle_fac)
+                result += (e[get_dict_layer("avg_angle")] * avg_angle_fac)
             return result
 
-        # initialize console commands
-        CURSOR_UP = '\033[F'
-        ERASE_LINE = '\033[K'
-        
-        # initialize variables
-        island_center = mathutils.Vector((0,0))
-        directions = []
-        initial_boundary_co_x = []
-        initial_boundary_co_y = []
-        boundary_co = []
-        distances = []
-        real_vert_co = []
-        boundary_loops = []
-        inner_loops = []
-        linked_verts = []
-        unique_verts = []
-        linked_loops = []
-        edge_threshold = 0.001
+        def cost_sort(e):
+            return e[get_dict_layer("cost_to_boundary")]
+        def dist_sort(e):
+            return e[get_dict_layer("dist_to_boundary")]
 
-        # calculate island_center and append real vert coords and linked verts for each loop
-        iter = 0
-        seam_iter = 0
-        if props.verbose == True:
-            print("\nPelt UV Generation started\n")
-            print("Step 1: Calculate UV island center and initialize island boundary")
-            print("=================================================================")
-        for v in bm.faces:
-            iter += 1
-            if v.select == True:
-                for loop in v.loops:
-                    uva = loop[uv_layer]
-                    has_seam = 0
-                    for edge in loop.vert.link_edges:
-                        if edge.seam == True:
-                            has_seam = 1
-                    seam_iter += has_seam
-                    if has_seam == 0:
-                        if loop not in inner_loops:
-                            inner_loops.append(loop)
-                    if has_seam == 1:
-#                    if uva.select == True:
-                        uvco = uva.uv
-                        initial_boundary_co_x.append(uvco.x)
-                        initial_boundary_co_y.append(uvco.y)
-                        
-                        if v.index not in unique_verts:
-                            unique_verts.append(v.index)
-                            linked_loops.append([])
-                        
-                        if loop not in boundary_loops:
-                            boundary_loops.append(loop)
-                            real_vert_co.append(loop.vert.co)
-                            linked_verts.append(v.index)
+        def find_near_parallels(e):
+            near_parallels = []
+            for f in e.link_faces:
+                for edge in f.edges:
+                    across = False
+                    for v in edge.verts:
+                        if e in v.link_edges:
+                            across = True
+                            break
+                    if across == False:
+                        near_parallels.append(edge)
+            return near_parallels
 
-                        get_i = unique_verts.index(v.index)
-                        linked_loops[get_i].append(loop)
-                        if props.verbose == True:
-                            done_pct = (iter / len(bm.verts)) * 100
-                            if len(boundary_loops) > 1:
-                                print(CURSOR_UP + CURSOR_UP + CURSOR_UP + CURSOR_UP + CURSOR_UP)
-                            msg = "Added loop {:} to boundary list. \nCurrent number of boundary loops: {:}. \nVertex {:} of {:} checked. \nStep 1 {:.1f}% done.".format(loop.index, len(boundary_loops), iter, len(bm.verts), done_pct)
-                            print(msg, flush=True)
-                            sys.stdout.flush()
-        
-        # cancel if no geometry selected
-        if len(boundary_loops) < 1:
-            props.sloppy_error_msg_heading = "Can't generate pelt!"
-            props.sloppy_error_msg = "    No geometry selected."
-            bpy.ops.operator.sloppy_dialog('INVOKE_DEFAULT')
-            if props.verbose:
-                print("Pelt Generation cancelled...\n")
-            return {'CANCELLED'}
-        
-        max_x = max(initial_boundary_co_x)
-        min_x = min(initial_boundary_co_x)
-        max_y = max(initial_boundary_co_y)
-        min_y = min(initial_boundary_co_y)
+        def calc_cost_to_boundary(this_edge, curr_seam, other_seam, has_max_cost, max_cost):
+            done = []
+            boundary_found = False
+            cost = 0
+            next_round = [this_edge]
+            while boundary_found == False:
+                this_round = next_round.copy()
+                next_round = []
+                for edge in this_round:
+                    for v in edge.verts:
+                        for ve in v.link_edges:
+                            if ve not in done and ve.index != edge.index:
+                                next_round.append(ve)
+                                if other_seam == True:
+                                    if ve.seam == True:
+                                        if ve not in curr_seam:
+                                            boundary_found = True
+                                            return cost
+                                else:
+                                    if ve.seam == True or len(ve.link_faces) == 1 or ve.is_boundary:
+                                        boundary_found = True
+                                        return cost
+                            if boundary_found == True:
+                                break
+                        if boundary_found == True:
+                            break
+                    if boundary_found == True:
+                        break
+                    done.append(edge)
+                cost += 1
+                if has_max_cost == True:
+                    if cost >= max_cost:
+                        return cost
+                print(f"Current cost for edge {this_edge.index}: {cost}")
+            return cost
 
-        island_center.x = bl_math.lerp(min_x, max_x, 0.5)
-        island_center.y = bl_math.lerp(min_y, max_y, 0.5)
-        
-        if props.verbose == True:
-            print(CURSOR_UP + ERASE_LINE + CURSOR_UP)
-            print("Step 1 complete!\n")
-            print("Step 1 results:")
-            print("---------------")
-            print(f"Center of UV island: {island_center.x}, {island_center.y}")
-            print(f"Number of selected verts: {len(unique_verts)}")
-            print(f"{seam_iter} of boundary loops were linked to seam edges through their vertex.")
-            print(f"Number of boundary UV loops: {len(boundary_loops)}")
-            print(f"Number of non-boundary UV loops: {len(inner_loops)}\n")
+        def calc_dist_to_boundary(this_edge, curr_seam, other_seam, has_max_dist, max_dist):
+            done = []
+            boundary_found = False
+            dist = 0.0
+            next_round = [this_edge]
+            while boundary_found == False:
+                this_round = next_round.copy()
+                next_round = []
+                this_dist = 0.0
+                num_dists = 0
+                for edge in this_round:
+                    this_dist += edge.calc_length()
+                    num_dists += 1
+                    for v in edge.verts:
+                        for ve in v.link_edges:
+                            if ve not in done and ve.index != edge.index:
+                                next_round.append(ve)
+                                if other_seam == True:
+                                    if ve.seam == True:
+                                        if ve not in curr_seam:
+                                            boundary_found = True
+                                            return dist
+                                else:
+                                    if ve.seam == True or len(ve.link_faces) == 1 or ve.is_boundary:
+                                        boundary_found = True
+                                        return dist
+                            if boundary_found == True:
+                                break
+                        if boundary_found == True:
+                            break
+                    if boundary_found == True:
+                        break
+                    done.append(edge)
+                
+                dist += this_dist / num_dists
+                if has_max_dist == True:
+                    if dist >= max_dist:
+                        return dist
+                print(f"Current distance for edge {this_edge.index}: {dist}")
+            return dist
 
-        # initialize corners and corner distance arrays
-        corners = [mathutils.Vector((0,1)), mathutils.Vector((1,1)), mathutils.Vector((0,0)), mathutils.Vector((1,0))]
-        corner_dists = [[], [], [], []]
-        
-        if props.verbose == True:
-            print("Step 2: Square boundary and calculate distance from center for each boundary point")
-            print("==================================================================================")
+        all_edges = []
+        max_cost_to_boundary = 0
 
-        # calculate distances and directions from center for boundary loop points,
-        # move points to 1 UV unit radius circle and then square that circle
-        iter = 0
-        for loop in boundary_loops:
-            iter += 1
-            uva = loop[uv_layer]
-            uvco = uva.uv
-            uvco_old = uvco
-            vec = uvco - island_center
-            dir = vec.normalized()
-            dist = vec.length
-            directions.append(dir)
-            distances.append(dist)
-            vec_sqr = circle_to_square(dir.x, dir.y)
-            uvco.x = 0.5 + (vec_sqr.x * 0.5)
-            uvco.y = 0.5 + (vec_sqr.y * 0.5)
+        e_iter = 0
+        for edge in bm.edges:
+            if edge.seam == False:
+                all_edges.append(edge)
+                ao = 0.0
+                avg_edge_length = 0.0
+                avg_angle = 0.0
+                num_edges = 0
+                num_angles = 0
+                for v in edge.verts:
+                    ao += v[bm.verts.layers.float_color['AO']].x
+                    for e in v.link_edges:
+                        if e.index != edge.index:
+                            num_edges += 1
+                            avg_edge_length += e.calc_length()
+        #                    if len(e.link_faces) == 2:
+        #                        avg_angle += math.degrees(e.calc_face_angle_signed())
+        #                        num_angles += 1
+                near_pars = find_near_parallels(edge)
+                if len(near_pars) > 1:
+                    for e in near_pars:
+                        if len(e.link_faces) == 2:
+                            num_angles += 1
+                            avg_angle += math.degrees(e.calc_face_angle_signed())
+                    avg_edge_length /= num_edges
+                    avg_angle /= num_angles
+                new_max_density = max(avg_edge_length, max_edge_density)
+                new_min_density = min(avg_edge_length, min_edge_density)
+                new_max_angle = max(avg_angle, max_avg_angle)
+                new_min_angle = min(avg_angle, min_avg_angle)
+                max_edge_density = new_max_density
+                min_edge_density = new_min_density
+                max_avg_angle = new_max_angle
+                min_avg_angle = new_min_angle
+                ao /= 2
+                edge[get_dict_layer("edge_density")] = avg_edge_length
+                edge[get_dict_layer("avg_angle")] = avg_angle
+                edge[get_dict_layer("eAO")] = ao
+            e_iter += 1
+            remain_num = len(bm.edges) - e_iter
+            print(f"{e_iter} edges done, {remain_num} remaining.")
+                
+
+        print(min_edge_density)
+        print(max_edge_density)
+
+        all_edges.sort(key=angle_sort)
+
+        #all_edges_angle = []
+        #for edge in all_edges:
+        #    if len(edge.link_faces) > 1:
+        #        str = "{:.3}".format(math.degrees(angle_sort))
+        #        all_edges_angle.append(str)
+        #print(f"Edges: {all_edges_angle}")
+
+        remain_edges = all_edges.copy()
+
+        seams = []
+
+        rounds = 20
+        max_retries = 100
+
+        near_parallel_edges = []
+
+        angle_threshold_start = -50
+        angle_threshold_end = -20
+        angle_threshold_interval = angle_threshold_end - angle_threshold_start
+        angle_threshold_point = 0
+        if max_retries > 0:
+            angle_threshold_point = angle_threshold_interval / max_retries
+
+        for i in range(rounds):
+            remain_edges.sort(key=angle_sort)
             
-            for c,d in zip(corners, corner_dists):
-                vec_cx = c.x - uvco.x
-                vec_cy = c.y - uvco.y
-                dist_c = mathutils.Vector((vec_cx,vec_cy))
-                d.append(dist_c)
-            
-            boundary_co.append(uvco)
-            
-            if props.verbose == True:
-                done_pct = (iter / len(boundary_loops)) * 100
-                if iter > 1:
-                    print(CURSOR_UP + CURSOR_UP + CURSOR_UP + CURSOR_UP + ERASE_LINE + CURSOR_UP)
-                msg = "Moved point at {:.5f}, {:.5f} to new position at {:.5f}, {:.5f}. \nInitial distance from island center: {:.5f}. \nBoundary point direction: {:.5f}, {:.5f} \nStep 2 {:.1f}% done.".format(uvco_old.x, uvco_old.y, uvco.x, uvco.y, dist, dir.x, dir.y, done_pct)
-                print(msg, flush=True)
-                sys.stdout.flush()
-            bpy.context.active_object.data.update()
-            
-        if props.verbose == True:
-            print(CURSOR_UP + ERASE_LINE + CURSOR_UP)
-            print("Step 2 complete!\n")
-            print("Step 2 results:")
-            print("---------------")
+            seam_ended = False
+            next_round = [remain_edges[0]]
+            verts_done = []
+            current_adjacent = []
+            current_adjacent_faces = []
+            current_seam = []
+            max_cost_to_boundary = 0
+            retries = 0
 
-        max_distance = max(distances)
-        get_max_i = distances.index(max_distance)
-        max_dist_dir = directions[get_max_i]
-        min_distance = min(distances)
-        get_min_i = distances.index(min_distance)
-        min_dist_dir = directions[get_min_i]
-        if props.verbose == True:
-            print("Max. distance from center is {:.5f} in direction: {:.5f}, {:.5f}".format(max_distance, max_dist_dir.x, max_dist_dir.y))
-            print("Min. distance from center is {:.5f} in direction: {:.5f}, {:.5f}\n".format(min_distance, min_dist_dir.x, min_dist_dir.y))
-            print("Step 3: Align boundary points along UV edges")
-            print("============================================")
-        
-        # move points nearest to corners to corners
-        for c,d in zip(corners, corner_dists):
-            near_c = min(d)
-            cis = [i for i,x in enumerate(d) if x == near_c]
-            for ci in cis:
-                boundary_loops[ci][uv_layer].uv.x = c.x
-                boundary_loops[ci][uv_layer].uv.y = c.y
+            while seam_ended == False:
+                this_round = next_round.copy()
+                next_round = []
+                angle_threshold = angle_threshold_start
+                
+                for edge in this_round:
+                    print(angle_sort(edge))
+                    edge.seam = True
+                    print(f"Added {edge.index} to seam.")
+                    current_seam.append(edge)
+                    near_para = find_near_parallels(edge)
+                    for i in near_para:
+                        near_parallel_edges.append(i)
+                    if edge in remain_edges:
+                        remain_edges.remove(edge)
+                    for f in edge.link_faces:
+                        current_adjacent_faces.append(f)
+                    for v in edge.verts:
+                        if v not in verts_done:
+                            vert_edges = []
+                            for eb in v.link_edges:
+                                if eb.link_faces not in current_adjacent_faces:
+                                    current_adjacent_faces.append(f)
+                                    if len(eb.link_faces) > 1:
+                                        if eb.index != edge.index and eb.seam == False and eb not in current_seam and eb not in current_adjacent and eb not in near_parallel_edges and angle_sort(eb) < angle_threshold:
+                                            vert_edges.append(eb)
+                                            current_adjacent.append(eb)
+        #                                    this_cost = calc_cost_to_boundary(eb, current_seam)
+        #                                    new_max_cost_to_boundary = max(max_cost_to_boundary, this_cost)
+                            if len(vert_edges) > 0:
+                                vert_edges.sort(key=angle_sort)
+                                next_round.append(vert_edges[0])
+                            verts_done.append(v)
+                
+                if len(next_round) == 0:
+                    if retries < max_retries:
+                        retries += 1
+                        retry_round = []
+                        retry_round.append(current_seam[-1])
+                        angle_threshold = angle_threshold_start + (angle_threshold_point * retries)
+                        print(f"Retrying edge {current_seam[-1].index} with angle threshold {angle_threshold}. Retry #{retries}.")
+                        for edge in retry_round:
+                            for v in edge.verts:
+                                vert_edges = []
+                                for eb in v.link_edges:
+                                    if eb.link_faces not in current_adjacent_faces:
+                                        current_adjacent_faces.append(f)
+                                        if len(eb.link_faces) > 1:
+                                            if eb.index != edge.index and eb.seam == False and eb not in current_seam and eb not in current_adjacent and eb not in near_parallel_edges and angle_sort(eb) < angle_threshold:
+                                                vert_edges.append(eb)
+                                                current_adjacent.append(eb)
+        #                                        this_cost = calc_cost_to_boundary(eb, current_seam, False, True, 8)
+        #                                        eb[get_dict_layer("cost_to_boundary")] = this_cost
+        #                                        this_dist = calc_dist_to_boundary(eb, current_seam, False, True, 0.5)
+        #                                        eb[get_dict_layer("dist_to_boundary")] = this_dist
+                                if len(vert_edges) > 0:
+        #                            vert_edges.sort(key=cost_sort)
+                                    vert_edges.sort(key=angle_sort)
+                                    next_round.append(vert_edges[0])
+                    else:
+                        seam_ended = True
 
-        bpy.context.active_object.data.update()
-
-        # align boundary points within edge_threshold distance to edges to edges
-        ud = 1.0 - edge_threshold
-        ld = 0.0 + edge_threshold
-
-        iter = 0
-        for loop in boundary_loops:
-            if loop[uv_layer].uv.y >= ud:
-                iter += 1
-                loop[uv_layer].uv.y = 1.0
-            if loop[uv_layer].uv.y <= ld:
-                iter += 1
-                loop[uv_layer].uv.y = 0.0
-            if loop[uv_layer].uv.x >= ud:
-                iter += 1
-                loop[uv_layer].uv.x = 1.0
-            if loop[uv_layer].uv.x <= ld:
-                iter += 1
-                loop[uv_layer].uv.x = 0.0
-
-        bpy.context.active_object.data.update()
-        
-        if props.verbose == True:
-            print(f"{iter} boundary points within edge threshold {edge_threshold} of edge aligned.")
-        
-        if props.space_edges == True:
-            # space boundary points equally along their edge
-            def sortloopx(e):
-                return e[uv_layer].uv.x
-
-            def sortloopy(e):
-                return e[uv_layer].uv.y
-
-            boundary_sorted_x = []
-            boundary_sorted_y = []
-            boundary_unique_lx = []
-            boundary_unique_rx = []
-            boundary_unique_uy = []
-            boundary_unique_ly = []
-
-            sorting_boundary_loops_x = boundary_loops
-            sorting_boundary_loops_x.sort(key=sortloopx)
-
-            sorting_boundary_loops_y = boundary_loops
-            sorting_boundary_loops_y.sort(key=sortloopy)
-
-            for loop in sorting_boundary_loops_x:
-                if loop[uv_layer].uv.y == 1.0:
-                    boundary_sorted_x.append(loop)
-                    if loop[uv_layer].uv.x not in boundary_unique_uy:
-                        boundary_unique_uy.append(loop[uv_layer].uv.x)
-                if loop[uv_layer].uv.y == 0.0:
-                    boundary_sorted_x.append(loop)
-                    if loop[uv_layer].uv.x not in boundary_unique_ly:
-                        boundary_unique_ly.append(loop[uv_layer].uv.x)
-                        
-            for loop in sorting_boundary_loops_y:
-                if loop[uv_layer].uv.x == 1.0:
-                    boundary_sorted_y.append(loop)
-                    if loop[uv_layer].uv.y not in boundary_unique_rx:
-                        boundary_unique_rx.append(loop[uv_layer].uv.y)
-                if loop[uv_layer].uv.x == 0.0:
-                    boundary_sorted_y.append(loop)
-                    if loop[uv_layer].uv.y not in boundary_unique_lx:
-                        boundary_unique_lx.append(loop[uv_layer].uv.y)
-                        
-            max_iter = len(boundary_sorted_x) + len(boundary_sorted_y)
-            iter = 0
-
-            for loop in boundary_sorted_x:
-                iter += 1
-                if loop[uv_layer].uv.y == 1.0 and loop[uv_layer].uv.x != 1.0 and loop[uv_layer].uv.x != 0.0:
-                    get_i = boundary_unique_uy.index(loop[uv_layer].uv.x)
-                    newx = (1/(len(boundary_unique_uy)-1)) * get_i
-                    loop[uv_layer].uv.x = newx
-                if loop[uv_layer].uv.y == 0.0 and loop[uv_layer].uv.x != 1.0 and loop[uv_layer].uv.x != 0.0:
-                    get_i = boundary_unique_ly.index(loop[uv_layer].uv.x)
-                    newx = (1/(len(boundary_unique_ly)-1)) * get_i
-                    loop[uv_layer].uv.x = newx
-                if props.verbose == True:
-                    done_pct = (iter / max_iter) * 100
-                    if iter > 1:
-                        print(CURSOR_UP + CURSOR_UP + CURSOR_UP)
-                    msg = "Processing boundary loop {:} of {:} \nStep 3 {:.1f}% done.".format(iter, max_iter, done_pct)
-                    print(msg, flush=True)
-                    sys.stdout.flush()
-
-            for loop in boundary_sorted_y:
-                iter += 1
-                if loop[uv_layer].uv.x == 1.0 and loop[uv_layer].uv.y != 1.0 and loop[uv_layer].uv.y != 0.0:
-                    get_i = boundary_unique_rx.index(loop[uv_layer].uv.y)
-                    newy = (1/(len(boundary_unique_rx)-1)) * get_i
-                    loop[uv_layer].uv.y = newy
-                if loop[uv_layer].uv.x == 0.0 and loop[uv_layer].uv.y != 1.0 and loop[uv_layer].uv.y != 0.0:
-                    get_i = boundary_unique_lx.index(loop[uv_layer].uv.y)
-                    newy = (1/(len(boundary_unique_lx)-1)) * get_i
-                    loop[uv_layer].uv.y = newy
-                if props.verbose == True:
-                    done_pct = (iter / max_iter) * 100
-                    if iter > 1:
-                        print(CURSOR_UP + CURSOR_UP + CURSOR_UP)
-                    msg = "Processing boundary loop {:} of {:} \nStep 3 {:.1f}% done.".format(iter, max_iter, done_pct)
-                    print(msg, flush=True)
-                    sys.stdout.flush()
-
-            bpy.context.active_object.data.update()
-        
-        if props.space_edges == False:
-            if props.verbose == True:
-                print("Skipped even spacing of boundary loops.\n")
-        
-        if props.verbose == True:
-            print(CURSOR_UP + ERASE_LINE + CURSOR_UP)
-            print("Step 3 complete!\n")
-            if props.space_edges == True:
-                print("Step 3 results:")
-                print("---------------")
-                print(f"Points along left edge: {len(boundary_unique_lx)}")
-                print(f"Points along right edge: {len(boundary_unique_rx)}")
-                print(f"Points along bottom edge: {len(boundary_unique_ly)}")
-                print(f"Points along top edge: {len(boundary_unique_uy)}\n")
-            print("Step 4: Calculate direction and distance from island center for remaining loops")
-            print("===============================================================================")
-            
-        # get remaining loops and calculate distance multiplier from distances of boundary loop points
-        rest_loop_dist_factors = []
-        rest_boundary_co = []
-
-        iter = 0
-        iter_max = len(inner_loops)
-
-        for loop in inner_loops:
-            iter += 1
-            uva = loop[uv_layer]
-            uvco = uva.uv
-            vec = uvco - island_center
-            dir = vec.normalized()
-            dirdots = []
-            for d in directions:
-                dirdot = 1 - dir.dot(d)
-                dirdots.append(dirdot)
-            min_dirdot = min(dirdots)
-            min_dirdot_i = dirdots.index(min_dirdot)
-            dist_fac = vec.length / distances[min_dirdot_i]
-            rest_loop_dist_factors.append(dist_fac)
-            rest_boundary_co.append(boundary_co[min_dirdot_i])
-            if props.verbose == True:
-                done_pct = (iter / iter_max) * 100
-                if iter > 1:
-                    print(CURSOR_UP + CURSOR_UP + CURSOR_UP + CURSOR_UP)
-                else:
-                    print(CURSOR_UP)
-                msg = "Calculated distance multiplier of {:.5f} for loop {:}. \nProcessed loop {:} of {:}. \nStep 4 {:.1f}% done.".format(dist_fac, loop.index, iter, iter_max, done_pct)
-                print(msg, flush=True)
-                sys.stdout.flush()
-        
-        if props.verbose == True:
-            print(CURSOR_UP + ERASE_LINE + CURSOR_UP)
-            print("Step 4 complete!\n")
-            print("Step 5: Adjust positions of non-boundary loops")
-            print("==============================================")
-        
-        # move non-boundary points
-        iter = 0
-
-        for loop, fac, bco in zip(inner_loops, rest_loop_dist_factors, rest_boundary_co):
-            iter += 1
-            uva = loop[uv_layer]
-            uvco = uva.uv
-            uvco_old = uvco
-            mid = mathutils.Vector((0.5, 0.5))
-            newx = bl_math.lerp(0.5, bco.x, fac)
-            newy = bl_math.lerp(0.5, bco.y, fac)
-            uvco.x = newx
-            uvco.y = newy
-            if props.verbose == True:
-                done_pct = round((iter/len(inner_loops)) * 1000) * 0.1
-                if iter > 1:
-                    print(CURSOR_UP + CURSOR_UP + ERASE_LINE + CURSOR_UP + CURSOR_UP)
-                msg = "Processing loop {:} of {:}. \nMoved point at {:.5}, {:.5} to new position at {:.5}, {:.5}. \nStep 5 {:.1f}% done.".format(iter, len(inner_loops), uvco_old.x, uvco_old.y, uvco.x, uvco.y, done_pct)
-                print(msg, flush=True)
-                sys.stdout.flush()
-            
-        bpy.context.active_object.data.update()
-        
-        if props.verbose == True:
-            print(CURSOR_UP + ERASE_LINE + CURSOR_UP)
-            print("Step 5 complete!\n")
-        
-        if props.relax_inner == True:
-            for loop in inner_loops:
-                uva = loop[uv_layer]
-                uva.select = True
-            try:
-                bpy.ops.uv.univ_relax()
-            except AttributeError:
-                if props.verbose:
-                    print("Could not find UniV add-on, skipping relax.\n")
+            if len(current_seam) < 2:
+                for edge in current_seam:
+                    edge.seam = False
             else:
-                if props.verbose:
-                    print("UniV add-on found, relaxing.\n")
-            bpy.ops.uv.select_all(action='DESELECT')
+                seams.append(current_seam)
+
+        bpy.context.active_object.data.update()
+
+        if len(seams) > 1:
+            for seam in seams:
+                for edge in seam:
+        #            this_cost = calc_cost_to_boundary(eb, current_seam, True, True, 8)
+        #            eb[get_dict_layer("cost_to_boundary")] = this_cost
+        #        seam.sort(key=cost_sort)
+                    this_dist = calc_dist_to_boundary(edge, current_seam, True, True, 0.5)
+                    edge[get_dict_layer("dist_to_boundary")] = this_dist
+                seam.sort(key=dist_sort)
+                
+                next_round = [seam[0]]
+                seam_ended = False
+                verts_done = []
+                current_adjacent = []
+                current_adjacent_faces = []
+                current_seam = []
+                max_cost_to_boundary = 0
+
+                while seam_ended == False:
+                    this_round = next_round.copy()
+                    next_round = []
+                    
+                    for edge in this_round:
+                        other_seam_found = False
+                        edge.seam = True
+                        if edge not in seam:
+                            seam.append(edge)
+                        if edge not in current_seam:
+                            current_seam.append(edge)
+                        for v in edge.verts:
+                            vert_edges = []
+                            for eb in v.link_edges:
+                                if eb.seam == True and eb not in seam:
+                                    other_seam_found = True
+                                    seam_ended = True
+                                    break
+                                if eb.link_faces not in current_adjacent_faces:
+                                    current_adjacent_faces.append(f)
+                                    if len(eb.link_faces) > 1:
+                                        if eb.index != edge.index and eb.seam == False and eb not in current_seam and eb not in current_adjacent and eb not in near_parallel_edges:
+                                            print(f"Edge index: {edge.index} Other edge index: {eb.index}")
+                                            vert_edges.append(eb)
+                                            current_adjacent.append(eb)
+        #                                    this_cost = calc_cost_to_boundary(eb, seam, False, True, 8)
+        #                                    eb[get_dict_layer("cost_to_boundary")] = this_cost
+                                            this_dist = calc_dist_to_boundary(eb, seam, False, True, 0.5)
+                                            eb[get_dict_layer("dist_to_boundary")] = this_dist
+                            if len(vert_edges) > 0:
+        #                        vert_edges.sort(key=cost_sort)
+                                vert_edges.sort(key=dist_sort)
+                                next_round.append(vert_edges[0])
+                    if len(next_round) == 0:
+                        seam_ended = True
             
-        if props.verbose:
-            print("Pelt Generation complete!\n")
+                    if len(current_seam) > 5:
+                        for edge in current_seam:
+                            edge.seam = False
+        bpy.context.active_object.data.update()
         
         return {"FINISHED"}

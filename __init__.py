@@ -46,6 +46,69 @@ class SloppyProperties(bpy.types.PropertyGroup):
         outco = bpy_extras.view3d_utils.location_3d_to_region_2d(view3d_region, view3d, vec)
         return outco
     
+    def find_or_add_attribute(name, attr_type, attr_domain):
+        dat = bpy.context.object.data
+        attribute = dat.attributes[0]
+        get_i = dat.attributes.find(name)
+        if get_i == -1:
+            attribute = dat.attributes.new(name=name, type=attr_type, domain=attr_domain)
+        else:
+            try:
+                attribute = dat.attributes[get_i]
+            except:
+                bpy.context.active_object.data.update()
+                attribute = dat.attributes.new(name=name, type=attr_type, domain=attr_domain)
+        return attribute
+    
+    def get_attribute_layer(name, attr_type, attr_domain, bm):
+            layer = None
+            if attr_domain == "FACE":
+                if attr_type == "INT":
+                    layer = bm.faces.layers.int.get(name)
+                if attr_type == "FLOAT_VECTOR":
+                    layer = bm.faces.layers.float_vector.get(name)
+                if attr_type == "FLOAT":
+                    layer = bm.faces.layers.float.get(name)
+            if attr_domain == "POINT":
+                if attr_type == "FLOAT_COLOR":
+                    layer = bm.verts.layers.float_color.get(name)
+            if attr_domain == "EDGE":
+                if attr_type == "FLOAT":
+                    layer = bm.edges.layers.float.get(name)
+            return layer
+    
+    def get_dict_layer(name, attribute_dict):
+        layer = None
+        for dict in attribute_dict:
+            if dict["name"] == name:
+                layer = dict["layer"]
+                return layer
+
+    def find_near_parallels(e):
+        near_parallels = []
+        for f in e.link_faces:
+            for edge in f.edges:
+                across = False
+                for v in edge.verts:
+                    if e in v.link_edges:
+                        across = True
+                        break
+                if across == False:
+                    near_parallels.append(edge)
+        return near_parallels
+
+    def remap_val(val, in_min, in_max, out_min, out_max):
+        in_interval = in_max - in_min
+        out_interval = out_max - out_min
+        in_val = val - in_min
+        in_fac = in_val / in_interval
+        out_val = out_min + (in_fac * out_interval)
+        if out_val > out_max:
+            out_val = out_max
+        if out_val < out_min:
+            out_val = out_min
+        return out_val
+
     def update_uvs_geo_axis(self, context):
         '''Update function for UV alignment 3D view axis, to ensure only one is selected.'''
         if self.update_axis_switch == False:

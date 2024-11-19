@@ -11,7 +11,8 @@ class SloppySeamGen(bpy.types.Operator):
     bl_idname = "operator.sloppy_seam_gen"
     bl_label = "Generate Seans"
     bl_description = "Generate seams according to edge concavity, among other things"
-    
+    bl_options = {'REGISTER', 'UNDO'}
+
     def execute(self, context):
         props = context.scene.sloppy_props
         dat = bpy.context.object.data

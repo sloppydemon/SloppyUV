@@ -18,7 +18,7 @@ bl_info = {
     "category": "User Interface",
 }
 
-from SloppyUV.SloppySeamGen import SloppySeamGen # type: ignore
+from SloppyUV.SloppySeamGeneration import SloppySeamGen # type: ignore
 
 class SloppyProperties(bpy.types.PropertyGroup):
     
@@ -882,6 +882,31 @@ class SloppyPeltPanel(bpy.types.Panel):
         col_opt = pelt_grid.column(heading="Pelt Options:")
         col_opt.prop(props, "space_edges")
         col_opt.prop(props, "relax_inner")
+
+class SloppySeamGenPanel(bpy.types.Panel):
+    bl_idname = "UV_PT_SloppySeamGenPanel"
+    bl_parent_id = "UV_PT_SloppyUVPanel"
+    bl_region_type = "UI"
+    bl_space_type = "IMAGE_EDITOR"
+    bl_category = "SloppyUV"
+    bl_label = "Sloppy Seam Generation"
+
+    def draw(self, context):
+        layout = self.layout
+        seamgen_box = layout.box()
+        seamgen_grid = seamgen_box.grid_flow(columns=2, even_columns=True)
+        props = context.scene.sloppy_props
+
+        seamgen_grid.operator("operator.sloppy_seam_gen")
+        sg_col_opt = seamgen_grid.column(heading="Seam Generation Options:")
+        sg_col_opt.prop(props, "seamgen_angle_fac")
+        sg_col_opt.prop(props, "seamgen_avg_angle_fac")
+        sg_col_opt.prop(props, "seamgen_ao_fac")
+        sg_col_opt.prop(props, "seamgen_ed_fac")
+        sg_col_opt.prop(props, "seamgen_rounds")
+        sg_col_opt.prop(props, "seamgen_retries")
+        sg_col_opt.prop(props, "seamgen_angle_threshold_start")
+        sg_col_opt.prop(props, "seamgen_angle_threshold_end")
 
 class SloppyDebugPanel(bpy.types.Panel):
     bl_idname = "UV_PT_SloppyDebugPanel"
@@ -1858,11 +1883,16 @@ classes = [SloppyProperties,
            SloppyAlignUVsGeo,
            SloppyAlignUVsUV,
            SloppyAlignUVs,
-           SloppySeamGen]
+           SloppySeamGen,
+           SloppySeamGenPanel]
 
 def register():
     for cls in classes:
-        bpy.utils.register_class(cls)
+        try: 
+            bpy.utils.register_class(cls)
+        except:
+            bpy.utils.unregister_class(cls)
+            bpy.utils.register_class(cls)
     bpy.types.Scene.sloppy_props = bpy.props.PointerProperty(type = SloppyProperties)
 
         

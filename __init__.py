@@ -962,27 +962,13 @@ class SloppyCalcScale(bpy.types.Operator):
         uv_layer = bm.loops.layers.uv.verify()
         
         # find view3d region and space
-        def viewco(vec):
-            view3d_region = None
-            view3d = None
-            for scr in bpy.data.screens:
-                for ar in scr.areas:
-                    if ar.type == 'VIEW_3D':
-                        view3d_region = ar.regions[0]
-                        for spc in ar.spaces:
-                            if spc.type == 'VIEW_3D':
-                                view3d = spc.region_3d
-                                break
-            outco = bpy_extras.view3d_utils.location_3d_to_region_2d(view3d_region, view3d, vec)
-            return outco
-        
         def sort_loops_geo(e):
             props = context.scene.sloppy_props
             if props.scale_geo_space_view == True:
                 if props.current_sort_axis == "X":
-                    return viewco(e.vert.co).x
+                    return props.viewco(e.vert.co).x
                 if props.current_sort_axis == "Y":
-                    return viewco(e.vert.co).y
+                    return props.viewco(e.vert.co).y
             if props.scale_geo_space_global == True:
                 if props.current_sort_axis == "X":
                     return e.vert.co.x
@@ -1251,28 +1237,13 @@ class SloppyAlignUVs(bpy.types.Operator):
         CURSOR_UP = '\033[F'
         ERASE_LINE = '\033[K'
         
-        # find view3d region and space
-        def viewco(vec):
-            view3d_region = None
-            view3d = None
-            for scr in bpy.data.screens:
-                for ar in scr.areas:
-                    if ar.type == 'VIEW_3D':
-                        view3d_region = ar.regions[0]
-                        for spc in ar.spaces:
-                            if spc.type == 'VIEW_3D':
-                                view3d = spc.region_3d
-                                break
-            outco = bpy_extras.view3d_utils.location_3d_to_region_2d(view3d_region, view3d, vec)
-            return outco
-        
         def sort_loops(e):
             props = context.scene.sloppy_props
             if props.align_uvs_use_geo == True:
                 if props.align_uv_geo_axis[0] == True:
-                    return viewco(e.vert.co).x
+                    return props.viewco(e.vert.co).x
                 if props.align_uv_geo_axis[1] == True:
-                    return viewco(e.vert.co).y
+                    return props.viewco(e.vert.co).y
             if props.align_uvs_use_geo == False:
                 if props.align_uv_axis[0] == True:
                     return e[uv_layer].uv.x
@@ -1281,8 +1252,6 @@ class SloppyAlignUVs(bpy.types.Operator):
 
         loops = []
         
-        vec_x = mathutils.Vector((1,0))
-        vec_y = mathutils.Vector((0,1))
         vec = mathutils.Vector((0,0))
         dir = mathutils.Vector((0,0))
         
@@ -1349,7 +1318,7 @@ class SloppyAlignUVs(bpy.types.Operator):
         
         if props.align_uvs_use_geo == True:
             loops.sort(key=sort_loops)
-            vec = viewco(loops[-1].vert.co) - viewco(loops[0].vert.co)
+            vec = props.viewco(loops[-1].vert.co) - props.viewco(loops[0].vert.co)
             dir = vec.normalized()
         if props.align_uvs_use_geo == False:
             loops.sort(key=sort_loops)

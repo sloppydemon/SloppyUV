@@ -46,7 +46,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
         outco = bpy_extras.view3d_utils.location_3d_to_region_2d(view3d_region, view3d, vec)
         return outco
     
-    def find_or_add_attribute(name, attr_type, attr_domain):
+    def find_or_add_attribute(self, name, attr_type, attr_domain):
         dat = bpy.context.object.data
         attribute = dat.attributes[0]
         get_i = dat.attributes.find(name)
@@ -60,7 +60,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
                 attribute = dat.attributes.new(name=name, type=attr_type, domain=attr_domain)
         return attribute
     
-    def get_attribute_layer(name, attr_type, attr_domain, bm):
+    def get_attribute_layer(self, name, attr_type, attr_domain, bm):
             layer = None
             if attr_domain == "FACE":
                 if attr_type == "INT":
@@ -77,14 +77,14 @@ class SloppyProperties(bpy.types.PropertyGroup):
                     layer = bm.edges.layers.float.get(name)
             return layer
     
-    def get_dict_layer(name, attribute_dict):
+    def get_dict_layer(self, name, attribute_dict):
         layer = None
         for dict in attribute_dict:
             if dict["name"] == name:
                 layer = dict["layer"]
                 return layer
 
-    def find_near_parallels(e):
+    def find_near_parallels(self, e):
         near_parallels = []
         for f in e.link_faces:
             for edge in f.edges:
@@ -97,7 +97,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
                     near_parallels.append(edge)
         return near_parallels
 
-    def remap_val(val, in_min, in_max, out_min, out_max):
+    def remap_val(self, val, in_min, in_max, out_min, out_max):
         in_interval = in_max - in_min
         out_interval = out_max - out_min
         in_val = val - in_min

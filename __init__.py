@@ -21,6 +21,7 @@ from SloppyUV.SloppySeamGeneration import SloppySeamGen # type: ignore
 from SloppyUV.SloppySortIndexByDist import SortVertByDist # type: ignore
 from SloppyUV.SloppySortIndexByDist import SortEdgeByDist # type: ignore
 from SloppyUV.SloppySortIndexByDist import SortFaceByDist # type: ignore
+from SloppyUV.SloppyBakeProcAttr import SloppyProcAttrBake # type: ignore
 
 class SloppyProperties(bpy.types.PropertyGroup):
     
@@ -71,11 +72,20 @@ class SloppyProperties(bpy.types.PropertyGroup):
                     layer = bmi.faces.layers.float_vector.get(name)
                 if attr_type == "FLOAT":
                     layer = bmi.faces.layers.float.get(name)
+            if attr_domain == "CORNER":
+                if attr_type == "FLOAT":
+                    layer = bmi.loops.layers.float.get(name)
+                if attr_type == "FLOAT_COLOR":
+                    layer = bmi.loops.layers.float_color.get(name)
+                if attr_type == "FLOAT_VECTOR":
+                    layer = bmi.loops.layers.float_vector.get(name)
             if attr_domain == "POINT":
                 if attr_type == "FLOAT_COLOR":
                     layer = bmi.verts.layers.float_color.get(name)
                 if attr_type == "FLOAT":
                     layer = bmi.verts.layers.float.get(name)
+                if attr_type == "INT":
+                    layer = bmi.verts.layers.int.get(name)
             if attr_domain == "EDGE":
                 if attr_type == "FLOAT":
                     layer = bmi.edges.layers.float.get(name)
@@ -1940,7 +1950,9 @@ classes = [SloppyProperties,
            SortVertByDist,
            SortEdgeByDist,
            SortFaceByDist,
-           SloppySortDistPanel]
+           SloppySortDistPanel,
+           SloppyProcAttrBake
+           ]
 
 def register():
     for cls in classes:

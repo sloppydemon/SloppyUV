@@ -27,6 +27,13 @@ class SloppySeamGen(bpy.types.Operator):
             attr = props.find_or_add_attribute(nam["name"], nam["type"], nam["domain"])
             nam["layer"] = props.get_attribute_layer(nam["name"], nam["type"], nam["domain"], bm)
 
+        vAO = props.get_dict_layer("AO", attr_dict)
+        eAO = props.get_dict_layer("eAO", attr_dict)
+        edge_density = props.get_dict_layer("edge_density", attr_dict)
+        avg_angle_lyr = props.get_dict_layer("avg_angle", attr_dict)
+        cost_to_boundary = props.get_dict_layer("cost_to_boundary", attr_dict)
+        dist_to_boundary = props.get_dict_layer("dist_to_boundary", attr_dict)
+
         min_edge_density = 9999.0
         max_edge_density = 0.0
         min_avg_angle = 0.0
@@ -38,19 +45,19 @@ class SloppySeamGen(bpy.types.Operator):
 
         def angle_sort(e):
             result = 0.0
-            ao = props.remap_val(e[props.get_dict_layer("eAO", attr_dict)], 0, 1, -180, 180)
-            ed = props.remap_val(e[props.get_dict_layer("edge_density", attr_dict)], min_edge_density, max_edge_density, -180, 180)
+            ao = props.remap_val(e[eAO], 0, 1, -180, 180)
+            ed = props.remap_val(e[edge_density], min_edge_density, max_edge_density, -180, 180)
             if len(e.link_faces) > 1:
                 result += (ao * ao_fac)
                 result += (ed * ed_fac)
                 result += (math.degrees(e.calc_face_angle_signed()) * angle_fac)
-                result += (e[props.get_dict_layer("avg_angle", attr_dict)] * avg_angle_fac)
+                result += (e[avg_angle_lyr] * avg_angle_fac)
             return result
 
         def cost_sort(e):
-            return e[props.get_dict_layer("cost_to_boundary", attr_dict)]
+            return e[cost_to_boundary]
         def dist_sort(e):
-            return e[props.get_dict_layer("dist_to_boundary", attr_dict)]
+            return e[dist_to_boundary]
 
         def calc_cost_to_boundary(this_edge, curr_seam, other_seam, has_max_cost, max_cost):
             done = []
@@ -143,7 +150,7 @@ class SloppySeamGen(bpy.types.Operator):
                 num_edges = 0
                 num_angles = 0
                 for v in edge.verts:
-                    ao += v[bm.verts.layers.float_color['AO']].x
+                    ao += v[vAO].x
                     for e in v.link_edges:
                         if e.index != edge.index:
                             num_edges += 1
@@ -165,9 +172,9 @@ class SloppySeamGen(bpy.types.Operator):
                 max_avg_angle = new_max_angle
                 min_avg_angle = new_min_angle
                 ao /= 2
-                edge[props.get_dict_layer("edge_density", attr_dict)] = avg_edge_length
-                edge[props.get_dict_layer("avg_angle", attr_dict)] = avg_angle
-                edge[props.get_dict_layer("eAO", attr_dict)] = ao
+                edge[edge_density] = avg_edge_length
+                edge[avg_angle_lyr] = avg_angle
+                edge[eAO] = ao
             e_iter += 1
             remain_num = len(bm.edges) - e_iter
             if verbose == True:
@@ -270,7 +277,7 @@ class SloppySeamGen(bpy.types.Operator):
             for seam in seams:
                 for edge in seam:
                     this_dist = calc_dist_to_boundary(edge, current_seam, True, True, 0.5)
-                    edge[props.get_dict_layer("dist_to_boundary", attr_dict)] = this_dist
+                    edge[dist_to_boundary] = this_dist
                 seam.sort(key=dist_sort)
                 
                 next_round = [seam[0]]
@@ -305,7 +312,7 @@ class SloppySeamGen(bpy.types.Operator):
                                             vert_edges.append(eb)
                                             current_adjacent.append(eb)
                                             this_dist = calc_dist_to_boundary(eb, seam, False, True, 0.5)
-                                            eb[props.get_dict_layer("dist_to_boundary", attr_dict)] = this_dist
+                                            eb[dist_to_boundary] = this_dist
                             if len(vert_edges) > 0:
                                 vert_edges.sort(key=dist_sort)
                                 next_round.append(vert_edges[0])

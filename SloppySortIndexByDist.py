@@ -22,6 +22,8 @@ class SortVertByDist(bpy.types.Operator):
             attr = props.find_or_add_attribute(nam["name"], nam["type"], nam["domain"])
             nam["layer"] = props.get_attribute_layer(nam["name"], nam["type"], nam["domain"], bm)
 
+        vertsortdist = props.get_dict_layer("vertsortdist", attr_dict)
+
         def edge_length_sort(e):
             return e.calc_length()
 
@@ -30,7 +32,7 @@ class SortVertByDist(bpy.types.Operator):
             return vec.length
 
         def total_distance_sort(e):
-            return e[props.get_dict_layer("vertsortdist", attr_dict)]
+            return e[vertsortdist]
 
         bm.verts.ensure_lookup_table()
 
@@ -57,7 +59,7 @@ class SortVertByDist(bpy.types.Operator):
             this_vert = next_vert
             if props.verbose == True:
                 print(f"Processing vert {this_vert.index}, current total distance: {total_distance}. {len(verts_remain)} verts remaining.")
-            this_vert[props.get_dict_layer("vertsortdist", attr_dict)] = total_distance
+            this_vert[vertsortdist] = total_distance
             has_boundary = False
             
             edges = []
@@ -131,6 +133,8 @@ class SortEdgeByDist(bpy.types.Operator):
             attr = props.find_or_add_attribute(nam["name"], nam["type"], nam["domain"])
             nam["layer"] = props.get_attribute_layer(nam["name"], nam["type"], nam["domain"], bm)
 
+        edgesortdist = props.get_dict_layer("edgesortdist", attr_dict)
+
         def edge_length_sort(e):
             return e.calc_length()
 
@@ -139,7 +143,7 @@ class SortEdgeByDist(bpy.types.Operator):
             return vec.length
 
         def total_distance_sort(e):
-            return e[props.get_dict_layer("edgesortdist", attr_dict)]
+            return e[edgesortdist]
 
         bm.edges.ensure_lookup_table()
 
@@ -168,7 +172,7 @@ class SortEdgeByDist(bpy.types.Operator):
             this_edge = next_edge
             if props.verbose == True:
                 print(f"Processing edge {this_edge.index}, current total distance: {total_distance}. {len(edges_remain)} edges remaining.")
-            this_edge[props.get_dict_layer("edgesortdist", attr_dict)] = total_distance
+            this_edge[edgesortdist] = total_distance
             has_boundary = False
             found_other_edge = False
             
@@ -243,6 +247,8 @@ class SortFaceByDist(bpy.types.Operator):
             attr = props.find_or_add_attribute(nam["name"], nam["type"], nam["domain"])
             nam["layer"] = props.get_attribute_layer(nam["name"], nam["type"], nam["domain"], bm)
 
+        facesortdist = props.get_dict_layer("facesortdist", attr_dict)
+
         def face_avg_length_sort(e):
             avg_length = 0.0
             num_lengths = 0
@@ -257,7 +263,7 @@ class SortFaceByDist(bpy.types.Operator):
             return vec.length
 
         def total_distance_sort(e):
-            return e[props.get_dict_layer("facesortdist", attr_dict)]
+            return e[facesortdist]
 
         bm.verts.ensure_lookup_table()
 
@@ -284,7 +290,7 @@ class SortFaceByDist(bpy.types.Operator):
             this_face = next_face
             if props.verbose == True:
                 print(f"Processing face {this_face.index}, current total distance: {total_distance}. {len(faces_remain)} faces remaining.")
-            this_face[props.get_dict_layer("facesortdist", attr_dict)] = total_distance
+            this_face[facesortdist] = total_distance
             has_boundary = False
             
             potential_faces = []

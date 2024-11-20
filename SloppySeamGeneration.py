@@ -1,5 +1,4 @@
 import bpy
-from bpy_extras import bmesh_utils
 import bmesh
 import math
 
@@ -12,12 +11,10 @@ class SloppySeamGen(bpy.types.Operator):
     def execute(self, context):
         props = context.scene.sloppy_props
         bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
-        uv_layer = bm.loops.layers.uv.verify()
-        islands = bmesh_utils.bmesh_linked_uv_islands(bm, uv_layer)
 
         verbose = props.verbose
         
-        attribute_dict = [
+        attr_dict = [
             {"name": "AO", "type": "FLOAT_COLOR", "domain": "POINT", "layer": None},
             {"name": "eAO", "type": "FLOAT", "domain": "EDGE", "layer": None},
             {"name": "edge_density", "type": "FLOAT", "domain": "EDGE", "layer": None},
@@ -26,7 +23,7 @@ class SloppySeamGen(bpy.types.Operator):
             {"name": "dist_to_boundary", "type": "FLOAT", "domain": "EDGE", "layer": None},
             ]
 
-        for nam in attribute_dict:
+        for nam in attr_dict:
             attr = props.find_or_add_attribute(nam["name"], nam["type"], nam["domain"])
             nam["layer"] = props.get_attribute_layer(nam["name"], nam["type"], nam["domain"], bm)
 
@@ -41,19 +38,19 @@ class SloppySeamGen(bpy.types.Operator):
 
         def angle_sort(e):
             result = 0.0
-            ao = props.remap_val(e[props.get_dict_layer("eAO", attribute_dict)], 0, 1, -180, 180)
-            ed = props.remap_val(e[props.get_dict_layer("edge_density", attribute_dict)], min_edge_density, max_edge_density, -180, 180)
+            ao = props.remap_val(e[props.get_dict_layer("eAO", attr_dict)], 0, 1, -180, 180)
+            ed = props.remap_val(e[props.get_dict_layer("edge_density", attr_dict)], min_edge_density, max_edge_density, -180, 180)
             if len(e.link_faces) > 1:
                 result += (ao * ao_fac)
                 result += (ed * ed_fac)
                 result += (math.degrees(e.calc_face_angle_signed()) * angle_fac)
-                result += (e[props.get_dict_layer("avg_angle", attribute_dict)] * avg_angle_fac)
+                result += (e[props.get_dict_layer("avg_angle", attr_dict)] * avg_angle_fac)
             return result
 
         def cost_sort(e):
-            return e[props.get_dict_layer("cost_to_boundary", attribute_dict)]
+            return e[props.get_dict_layer("cost_to_boundary", attr_dict)]
         def dist_sort(e):
-            return e[props.get_dict_layer("dist_to_boundary", attribute_dict)]
+            return e[props.get_dict_layer("dist_to_boundary", attr_dict)]
 
         def calc_cost_to_boundary(this_edge, curr_seam, other_seam, has_max_cost, max_cost):
             done = []
@@ -168,9 +165,9 @@ class SloppySeamGen(bpy.types.Operator):
                 max_avg_angle = new_max_angle
                 min_avg_angle = new_min_angle
                 ao /= 2
-                edge[props.get_dict_layer("edge_density", attribute_dict)] = avg_edge_length
-                edge[props.get_dict_layer("avg_angle", attribute_dict)] = avg_angle
-                edge[props.get_dict_layer("eAO", attribute_dict)] = ao
+                edge[props.get_dict_layer("edge_density", attr_dict)] = avg_edge_length
+                edge[props.get_dict_layer("avg_angle", attr_dict)] = avg_angle
+                edge[props.get_dict_layer("eAO", attr_dict)] = ao
             e_iter += 1
             remain_num = len(bm.edges) - e_iter
             if verbose == True:
@@ -273,7 +270,7 @@ class SloppySeamGen(bpy.types.Operator):
             for seam in seams:
                 for edge in seam:
                     this_dist = calc_dist_to_boundary(edge, current_seam, True, True, 0.5)
-                    edge[props.get_dict_layer("dist_to_boundary", attribute_dict)] = this_dist
+                    edge[props.get_dict_layer("dist_to_boundary", attr_dict)] = this_dist
                 seam.sort(key=dist_sort)
                 
                 next_round = [seam[0]]
@@ -308,7 +305,7 @@ class SloppySeamGen(bpy.types.Operator):
                                             vert_edges.append(eb)
                                             current_adjacent.append(eb)
                                             this_dist = calc_dist_to_boundary(eb, seam, False, True, 0.5)
-                                            eb[props.get_dict_layer("dist_to_boundary", attribute_dict)] = this_dist
+                                            eb[props.get_dict_layer("dist_to_boundary", attr_dict)] = this_dist
                             if len(vert_edges) > 0:
                                 vert_edges.sort(key=dist_sort)
                                 next_round.append(vert_edges[0])

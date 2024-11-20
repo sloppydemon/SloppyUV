@@ -1,6 +1,5 @@
 import bpy
 import bpy_extras
-from bpy_extras import bmesh_utils
 import bmesh
 import math
 import mathutils
@@ -19,6 +18,9 @@ bl_info = {
 }
 
 from SloppyUV.SloppySeamGeneration import SloppySeamGen # type: ignore
+from SloppyUV.SloppySortIndexByDist import SortVertByDist # type: ignore
+from SloppyUV.SloppySortIndexByDist import SortEdgeByDist # type: ignore
+from SloppyUV.SloppySortIndexByDist import SortFaceByDist # type: ignore
 
 class SloppyProperties(bpy.types.PropertyGroup):
     
@@ -60,21 +62,23 @@ class SloppyProperties(bpy.types.PropertyGroup):
                 attribute = dat.attributes.new(name=name, type=attr_type, domain=attr_domain)
         return attribute
     
-    def get_attribute_layer(self, name, attr_type, attr_domain, bm):
+    def get_attribute_layer(self, name, attr_type, attr_domain, bmi):
             layer = None
             if attr_domain == "FACE":
                 if attr_type == "INT":
-                    layer = bm.faces.layers.int.get(name)
+                    layer = bmi.faces.layers.int.get(name)
                 if attr_type == "FLOAT_VECTOR":
-                    layer = bm.faces.layers.float_vector.get(name)
+                    layer = bmi.faces.layers.float_vector.get(name)
                 if attr_type == "FLOAT":
-                    layer = bm.faces.layers.float.get(name)
+                    layer = bmi.faces.layers.float.get(name)
             if attr_domain == "POINT":
                 if attr_type == "FLOAT_COLOR":
-                    layer = bm.verts.layers.float_color.get(name)
+                    layer = bmi.verts.layers.float_color.get(name)
+                if attr_type == "FLOAT":
+                    layer = bmi.verts.layers.float.get(name)
             if attr_domain == "EDGE":
                 if attr_type == "FLOAT":
-                    layer = bm.edges.layers.float.get(name)
+                    layer = bmi.edges.layers.float.get(name)
             return layer
     
     def get_dict_layer(self, name, attribute_dict):
@@ -970,6 +974,22 @@ class SloppySeamGenPanel(bpy.types.Panel):
         sg_col_opt.prop(props, "seamgen_retries")
         sg_col_opt.prop(props, "seamgen_angle_threshold_start")
         sg_col_opt.prop(props, "seamgen_angle_threshold_end")
+
+class SloppySortDistPanel(bpy.types.Panel):
+    bl_idname = "UV_PT_SloppySortDistPanel"
+    bl_parent_id = "UV_PT_SloppyUVPanel"
+    bl_region_type = "UI"
+    bl_space_type = "IMAGE_EDITOR"
+    bl_category = "SloppyUV"
+    bl_label = "Sloppy Sort Index by Distance Traveled"
+
+    def draw(self, context):
+        layout = self.layout
+        sortdist_box = layout.box()
+
+        sortdist_box.operator("operator.sloppy_sort_vert_by_dist")
+        sortdist_box.operator("operator.sloppy_sort_edge_by_dist")
+        sortdist_box.operator("operator.sloppy_sort_face_by_dist")
 
 class SloppyDebugPanel(bpy.types.Panel):
     bl_idname = "UV_PT_SloppyDebugPanel"
@@ -1916,7 +1936,11 @@ classes = [SloppyProperties,
            SloppyAlignUVsUV,
            SloppyAlignUVs,
            SloppySeamGen,
-           SloppySeamGenPanel]
+           SloppySeamGenPanel,
+           SortVertByDist,
+           SortEdgeByDist,
+           SortFaceByDist,
+           SloppySortDistPanel]
 
 def register():
     for cls in classes:

@@ -110,6 +110,122 @@ class SloppyProperties(bpy.types.PropertyGroup):
                 if across == False:
                     near_parallels.append(edge)
         return near_parallels
+    
+    def select_by_index_bm(self, domain, choose_domain, uvs, i_start, i_end, sel_range, extend, output_only, in_bm):
+        '''Select mesh element by index or range of indices. 
+        (Can also be used to only output a list of elements.)'''
+        uv_layer = in_bm.loops.layers.uv.verify()
+        out_arr = []
+        indices = [i_start]
+        if sel_range:
+            indices = range(i_start, i_end + 1)
+        dom = None
+        dom_i = 0
+        modes = bpy.context.tool_settings.mesh_select_mode[:]
+        if choose_domain:
+            dom_i = domain
+            if domain == 0:
+                dom = in_bm.verts
+            if domain == 1:
+                dom = in_bm.edges
+            if domain == 2:
+                dom = in_bm.faces
+        else:
+            if modes[0]:
+                dom = in_bm.verts
+                dom_i = 0
+            if modes[1]:
+                dom = in_bm.edges
+                dom_i = 1
+            if modes[2]:
+                dom = in_bm.faces
+                dom_i = 2
+        if output_only:
+            for el in dom:
+                if el.index in indices:
+                    out_arr.append(el)
+        else:
+            for el in dom:
+                if el.index in indices:
+                    out_arr.append(el)
+                if uvs:
+                    if dom_i == 2:
+                        for ell in el.loops:
+                            if el.index in indices:
+                                ell[uv_layer].select = True
+                            else:
+                                if extend == False:
+                                    ell[uv_layer].select = False
+                    else:
+                        for ell in el.link_loops:
+                            if el.index in indices:
+                                ell[uv_layer].select = True
+                            else:
+                                if extend == False:
+                                    ell[uv_layer].select = False
+                else:
+                    if el.index in indices:
+                        el.select = True
+                    else:
+                        if extend == False:
+                            el.select = False
+        bpy.context.active_object.data.update()
+        return out_arr
+    
+    def shift_select_by_index_bm(self, domain, choose_domain, shift_amount, shift_by_len, shift_by_len_neg, extend, both_directions, output_only, in_bm):
+        '''Shift mesh element selection by their indices. 
+        (Can also be used to only output a list of elements.)'''
+        out_arr = []
+        dom = None
+        modes = bpy.context.tool_settings.mesh_select_mode[:]
+        if choose_domain:
+            if domain == 0:
+                dom = in_bm.verts
+            if domain == 1:
+                dom = in_bm.edges
+            if domain == 2:
+                dom = in_bm.faces
+        else:
+            if modes[0]:
+                dom = in_bm.verts
+            if modes[1]:
+                dom = in_bm.edges
+            if modes[2]:
+                dom = in_bm.faces
+
+        indices = [i.index for i in dom if i.select == True]
+
+        if extend == False:
+            for i in indices:
+                dom[i].select = False
+
+        if len(indices) == 0:
+            return out_arr
+        else:
+            not_indices = indices.copy()
+            for i, index in enumerate(not_indices):
+                mod_i = index
+                mod_i_n = index
+                if shift_by_len:
+                    arr_len = len(indices)
+                    if shift_by_len_neg:
+                        arr_len *= -1
+                    mod_i += arr_len
+                    mod_i_n -= arr_len
+                else:
+                    mod_i += shift_amount
+                    mod_i_n -= shift_amount
+                new_i = mod_i%len(dom)
+                if both_directions:
+                    new_i_n = mod_i_n%len(dom)
+                    indices.append(new_i_n)
+                indices[i] = new_i
+        for i in indices:
+            out_arr.append(dom[i])
+            if output_only == False:
+                dom[i].select = True
+        bpy.context.active_object.data.update()
+        return out_arr
 
     def remap_val(self, val, in_min, in_max, out_min, out_max):
         in_interval = in_max - in_min
@@ -384,6 +500,18 @@ class SloppyProperties(bpy.types.PropertyGroup):
     seamgen_clear_seam : bP (
         name = "Clear Seam",
         description = "Clear existing seam before generating new seam.",
+        default = False
+        ) # type: ignore
+    
+    distsort_bottom_up : bP (
+        name = "From Bottom Up",
+        description = "Weigh sorting of distance sort from bottom up.",
+        default = False
+        ) # type: ignore
+    
+    distsort_z_only : bP (
+        name = "Only Sort From Z",
+        description = "Only sort potential elements from Z.",
         default = False
         ) # type: ignore
     
@@ -996,10 +1124,15 @@ class SloppySortDistPanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         sortdist_box = layout.box()
+        props = context.scene.sloppy_props
 
         sortdist_box.operator("operator.sloppy_sort_vert_by_dist")
         sortdist_box.operator("operator.sloppy_sort_edge_by_dist")
         sortdist_box.operator("operator.sloppy_sort_face_by_dist")
+        sortdist_opt_row = sortdist_box.row()
+        sortdist_opt_row.prop(props, "distsort_bottom_up")
+        if props.distsort_bottom_up == True:
+            sortdist_opt_row.prop(props, "distsort_z_only")
 
 class SloppyDebugPanel(bpy.types.Panel):
     bl_idname = "UV_PT_SloppyDebugPanel"

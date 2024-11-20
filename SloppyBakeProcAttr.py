@@ -1,11 +1,8 @@
 import bpy
 import bpy_extras
-from bpy_extras import bmesh_utils
 import bmesh
 import math
 import mathutils
-import bl_math
-import sys
 
 class SloppyProcAttrBake(bpy.types.Operator):
     bl_idname = "operator.sloppy_proc_attr_bake"

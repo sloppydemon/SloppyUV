@@ -31,6 +31,14 @@ class SortVertByDist(bpy.types.Operator):
             vec = e.co - current_co
             return vec.length
 
+        def edge_length_sort_z(e):
+            curr_z = e.verts[0].co.lerp(e.verts[1].co, 0.5).z
+            return e.calc_length() + curr_z
+
+        def edge_sort_only_z(e):
+            curr_z = e.verts[0].co.lerp(e.verts[1].co, 0.5).z
+            return curr_z
+
         def total_distance_sort(e):
             return e[vertsortdist]
 
@@ -73,9 +81,18 @@ class SortVertByDist(bpy.types.Operator):
                             boundary_edges.append(edge)
                             has_boundary = True
             
-            edges.sort(key=edge_length_sort)
-            boundary_edges.sort(key=edge_length_sort)
             
+            if props.distsort_bottom_up == True:
+                if props.distsort_z_only == True:
+                    edges.sort(key=edge_sort_only_z)
+                    boundary_edges.sort(key=edge_sort_only_z)
+                else:
+                    edges.sort(key=edge_length_sort_z)
+                    boundary_edges.sort(key=edge_length_sort_z)
+            if props.distsort_bottom_up == False:
+                edges.sort(key=edge_length_sort)
+                boundary_edges.sort(key=edge_length_sort)
+
             
             if (len(boundary_edges) + len(edges)) > 0:
                 if has_boundary == True:
@@ -93,6 +110,8 @@ class SortVertByDist(bpy.types.Operator):
             else:
                 current_co = this_vert.co
                 verts_remain.sort(key=geo_vert_dist_sort)
+                # if props.distsort_bottom_up:
+                #     verts_remain.sort(key=geo_vert_dist_sort_z)
                 next_vert = verts_remain[0]
                 vec = verts_remain[0].co - this_vert.co
                 if props.verbose == True:
@@ -138,8 +157,16 @@ class SortEdgeByDist(bpy.types.Operator):
         def edge_length_sort(e):
             return e.calc_length()
 
+        def edge_length_sort_z(e):
+            curr_z = e.verts[0].co.lerp(e.verts[1].co, 0.5).z
+            return e.calc_length() + curr_z
+
+        def edge_sort_only_z(e):
+            curr_z = e.verts[0].co.lerp(e.verts[1].co, 0.5).z
+            return curr_z
+
         def geo_edge_dist_sort(e):
-            vec = e.verts[0].co.lerp(this_edge.verts[1].co, 0.5) - current_co
+            vec = e.verts[0].co.lerp(e.verts[1].co, 0.5) - current_co
             return vec.length
 
         def total_distance_sort(e):
@@ -187,8 +214,16 @@ class SortEdgeByDist(bpy.types.Operator):
                             boundary_edges.append(ve)
                             has_boundary = True
             
-            edges.sort(key=edge_length_sort)
-            boundary_edges.sort(key=edge_length_sort)
+            if props.distsort_bottom_up == True:
+                if props.distsort_z_only == True:
+                    edges.sort(key=edge_sort_only_z)
+                    boundary_edges.sort(key=edge_sort_only_z)
+                else:
+                    edges.sort(key=edge_length_sort_z)
+                    boundary_edges.sort(key=edge_length_sort_z)
+            if props.distsort_bottom_up == False:
+                edges.sort(key=edge_length_sort)
+                boundary_edges.sort(key=edge_length_sort)
             
             if (len(boundary_edges) + len(edges)) > 0:
                 if has_boundary == True:
@@ -209,6 +244,8 @@ class SortEdgeByDist(bpy.types.Operator):
             if found_other_edge == False:
                 current_co = this_edge.verts[0].co.lerp(this_edge.verts[1].co, 0.5)
                 edges_remain.sort(key=geo_edge_dist_sort)
+                # if props.distsort_bottom_up:
+                #     edges_remain.sort(key=geo_edge_dist_sort_z)
                 next_edge = edges_remain[0]
                 vec = edges_remain[0].verts[0].co.lerp(this_edge.verts[1].co, 0.5) - this_edge.verts[0].co.lerp(this_edge.verts[1].co, 0.5)
                 if props.verbose == True:
@@ -258,6 +295,20 @@ class SortFaceByDist(bpy.types.Operator):
             avg_length /= num_lengths
             return avg_length
 
+        def face_avg_length_sort_z(e):
+            avg_length = 0.0
+            num_lengths = 0
+            for edge in e.edges:
+                avg_length += edge.calc_length()
+                num_lengths += 1
+            avg_length /= num_lengths
+            curr_z = e.calc_center_median().z
+            return avg_length + curr_z
+
+        def face_sort_only_z(e):
+            curr_z = e.calc_center_median().z
+            return curr_z
+
         def geo_face_dist_sort(e):
             vec = e.calc_center_median() - current_co
             return vec.length
@@ -306,8 +357,17 @@ class SortFaceByDist(bpy.types.Operator):
                                     boundary_faces.append(f)
                                 has_boundary = True
             
-            potential_faces.sort(key=face_avg_length_sort)
-            boundary_faces.sort(key=face_avg_length_sort)
+            
+            if props.distsort_bottom_up == True:
+                if props.distsort_z_only == True:
+                    potential_faces.sort(key=face_sort_only_z)
+                    boundary_faces.sort(key=face_sort_only_z)
+                else:
+                    potential_faces.sort(key=face_avg_length_sort_z)
+                    boundary_faces.sort(key=face_avg_length_sort_z)
+            if props.distsort_bottom_up == False:
+                potential_faces.sort(key=face_avg_length_sort)
+                boundary_faces.sort(key=face_avg_length_sort)
             
             if (len(boundary_faces) + len(potential_faces)) > 0:
                 if has_boundary == True:
@@ -327,6 +387,8 @@ class SortFaceByDist(bpy.types.Operator):
             else:
                 current_co = this_face.calc_center_median()
                 faces_remain.sort(key=geo_face_dist_sort)
+                # if props.distsort_bottom_up:
+                #     faces_remain.sort(key=geo_face_dist_sort_z)
                 next_face = faces_remain[0]
                 vec = faces_remain[0].calc_center_median() - this_face.calc_center_median()
                 if props.verbose == True:

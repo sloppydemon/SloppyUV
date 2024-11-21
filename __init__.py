@@ -524,7 +524,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
     
     seamgen_clear_seam : bP (
         name = "Clear Seam",
-        description = "Clear existing seam before generating new seam.",
+        description = "Clear existing seam before generating new seam",
         default = False,
         update = update_seamgen_vars
         ) # type: ignore
@@ -538,21 +538,21 @@ class SloppyProperties(bpy.types.PropertyGroup):
     
     distsort_bottom_up : bP (
         name = "From Bottom Up",
-        description = "Weigh sorting of distance sort from bottom up.",
+        description = "Weigh sorting of distance sort from bottom up",
         default = False,
         update = update_distsort_vars
         ) # type: ignore
     
     distsort_z_only : bP (
         name = "Only Sort From Z",
-        description = "Only sort potential elements from Z.",
+        description = "Only sort potential elements from Z",
         default = False,
         update = update_distsort_vars
         ) # type: ignore
     
     seamgen_ao_fac : fP (
         name = "AO Influence",
-        description = "Influence of ambient occlusion attribute on seam generation.",
+        description = "Influence of ambient occlusion attribute on seam generation",
         default = 0.0,
         min = 0.0,
         soft_min = 0.0,
@@ -563,7 +563,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
     
     seamgen_ed_fac : fP (
         name = "Edge Density Influence",
-        description = "Influence of surrounding edge density attribute on seam generation.",
+        description = "Influence of surrounding edge density attribute on seam generation",
         default = 0.0,
         min = 0.0,
         soft_min = 0.0,
@@ -574,21 +574,21 @@ class SloppyProperties(bpy.types.PropertyGroup):
     
     seamgen_rounds : iP (
         name = "Iterations",
-        description = "Number of iterations of seam generation.",
+        description = "Number of iterations of seam generation",
         default = 20,
         update = update_seamgen_vars
         ) # type: ignore
     
     seamgen_retries : iP (
         name = "Number of Retries",
-        description = "Number of retries at end of each iteration of seam generation.",
+        description = "Number of retries at end of each iteration of seam generation",
         default = 100,
         update = update_seamgen_vars
         ) # type: ignore
     
     seamgen_angle_threshold_start : fP (
         name = "Angle Threshold Min",
-        description = "Angle threshold to start searching at.",
+        description = "Angle threshold to start searching at",
         default = -50.0,
         min = -180.0,
         soft_min = -180.0,
@@ -599,7 +599,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
     
     seamgen_angle_threshold_end : fP (
         name = "Angle Threshold Max",
-        description = "Angle threshold to end retries at.",
+        description = "Angle threshold to end retries at",
         default = -20.0,
         min = -180.0,
         soft_min = -180.0,
@@ -610,7 +610,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
     
     seamgen_angle_fac : fP (
         name = "Concavity Influence",
-        description = "Influence of edge angle concavity on seam generation.",
+        description = "Influence of edge angle concavity on seam generation",
         default = 1.0,
         min = 0.0,
         soft_min = 0.0,
@@ -621,7 +621,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
     
     seamgen_avg_angle_fac : fP (
         name = "Average Concavity Influence",
-        description = "Influence of averaged edge angle concavity on seam generation.",
+        description = "Influence of averaged edge angle concavity on seam generation",
         default = 0.0,
         min = 0.0,
         soft_min = 0.0,
@@ -2290,7 +2290,6 @@ def register():
             bpy.utils.unregister_class(cls)
             bpy.utils.register_class(cls)
     bpy.types.Scene.sloppy_props = bpy.props.PointerProperty(type = SloppyProperties)
-    SloppySeamGen.props = bpy.context.scene.sloppy_props
 
         
 def unregister():

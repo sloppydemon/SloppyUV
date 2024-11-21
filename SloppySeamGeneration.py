@@ -82,7 +82,7 @@ class SloppySeamGen(bpy.types.Operator):
 
     clear_seam : bP(
         name = "Clear Seams",
-        description = "Clear any existing seams.",
+        description = "Clear any existing seams",
         default = True
         ) # type: ignore
 

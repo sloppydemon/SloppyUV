@@ -1,7 +1,7 @@
 import bpy
 import bmesh
 import mathutils
-
+from bpy_extras import bmesh_utils
 
 class SortVertByDist(bpy.types.Operator):
     bl_idname = "operator.sloppy_sort_vert_by_dist"
@@ -28,12 +28,24 @@ class SortVertByDist(bpy.types.Operator):
         description = "Sort potential next element by position in Z",
         default = True
         ) # type: ignore
+
+    respect_islands : bP(
+        name = "Respect UV Islands",
+        description = "Respect mesh UV islands when sorting",
+        default = False
+        ) # type: ignore
     
 
     def execute(self, context):
         props = context.scene.sloppy_props
         bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
         current_co = mathutils.Vector((0,0,0))
+        current_island = 0
+        islands = []
+        uv_layer = bm.loops.layers.uv.verify()
+
+        if self.respect_islands == True:
+            islands = bmesh_utils.bmesh_linked_uv_islands(bm, uv_layer)
 
         attr_dict = [
             {"name": "vertsortdist", "type": "FLOAT", "domain": "POINT", "layer": None}
@@ -44,6 +56,7 @@ class SortVertByDist(bpy.types.Operator):
             nam["layer"] = props.get_attribute_layer(nam["name"], nam["type"], nam["domain"], bm)
 
         vertsortdist = props.get_dict_layer("vertsortdist", attr_dict)
+        max_total_distance = 0.0
 
         def edge_length_sort(e):
             return e.calc_length()
@@ -62,6 +75,29 @@ class SortVertByDist(bpy.types.Operator):
 
         def total_distance_sort(e):
             return e[vertsortdist]
+
+        def island_sort(e):
+            return e[1]
+        
+        def island_check(v):
+            v_islands = []
+            for i, island in enumerate(islands):
+                island_arr = []
+                island_arr.append(i)
+                island_face_count = 0
+                for face in v.link_faces:
+                    if face in island:
+                        island_face_count += 1
+                island_arr.append(island_face_count)
+                v_islands.append(island_arr)
+            v_islands.sort(key=island_sort)
+            return v_islands[0][0]
+
+        def geo_vert_dist_plus_island_sort(e):
+            vec = e.co - current_co
+            e_island = island_check(e)
+            diff = abs(current_island - e_island)
+            return vec.length + diff
 
         bm.verts.ensure_lookup_table()
 
@@ -89,6 +125,8 @@ class SortVertByDist(bpy.types.Operator):
             if props.verbose == True:
                 print(f"Processing vert {this_vert.index}, current total distance: {total_distance}. {len(verts_remain)} verts remaining.")
             this_vert[vertsortdist] = total_distance
+            new_max_dist = max(max_total_distance, total_distance)
+            max_total_distance = new_max_dist
             has_boundary = False
             
             edges = []
@@ -96,7 +134,12 @@ class SortVertByDist(bpy.types.Operator):
             
             for edge in this_vert.link_edges:
                 if edge not in edges_done:
-                    if edge.other_vert(this_vert) in verts_remain:
+                    this_island = 0
+                    other_island = 0
+                    if self.respect_islands == True:
+                        this_island = island_check(this_vert)
+                        other_island = island_check(edge.other_vert(this_vert))
+                    if edge.other_vert(this_vert) in verts_remain and this_island == other_island:
                         edges.append(edge)
                         if edge.is_boundary == True:
                             boundary_edges.append(edge)
@@ -130,10 +173,17 @@ class SortVertByDist(bpy.types.Operator):
                     last_edge = edges[0]
             else:
                 current_co = this_vert.co
-                verts_remain.sort(key=geo_vert_dist_sort)
+                if self.respect_islands == True:
+                    current_island = island_check(this_vert)
+                    verts_remain.sort(key=geo_vert_dist_plus_island_sort)
+                else:
+                    verts_remain.sort(key=geo_vert_dist_sort)
                 # if self.bottom_up_mix:
                 #     verts_remain.sort(key=geo_vert_dist_sort_z)
                 next_vert = verts_remain[0]
+                if self.respect_islands == True:
+                    curr_vi = 0
+                    
                 vec = verts_remain[0].co - this_vert.co
                 if props.verbose == True:
                     print(f"Jumping from {this_vert.index} to {next_vert.index} at a distance of {vec.length}")
@@ -180,10 +230,22 @@ class SortEdgeByDist(bpy.types.Operator):
         default = True
         ) # type: ignore
 
+    respect_islands : bP(
+        name = "Respect UV Islands",
+        description = "Respect mesh UV islands when sorting",
+        default = False
+        ) # type: ignore
+
     def execute(self, context):
         props = context.scene.sloppy_props
         bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
         current_co = mathutils.Vector((0,0,0))
+        current_island = 0
+        islands = []
+        uv_layer = bm.loops.layers.uv.verify()
+
+        if self.respect_islands == True:
+            islands = bmesh_utils.bmesh_linked_uv_islands(bm, uv_layer)
 
         attr_dict = [
             {"name": "edgesortdist", "type": "FLOAT", "domain": "EDGE", "layer": None}
@@ -212,6 +274,30 @@ class SortEdgeByDist(bpy.types.Operator):
 
         def total_distance_sort(e):
             return e[edgesortdist]
+
+        def island_sort(e):
+            return e[1]
+        
+        def island_check(v):
+            v_islands = []
+            for i, island in enumerate(islands):
+                island_arr = []
+                island_arr.append(i)
+                island_face_count = 0
+                for vert in v.verts:
+                    for face in vert.link_faces:
+                        if face in island:
+                            island_face_count += 1
+                island_arr.append(island_face_count)
+                v_islands.append(island_arr)
+            v_islands.sort(key=island_sort)
+            return v_islands[0][0]
+
+        def geo_edge_dist_plus_island_sort(e):
+            vec = e.verts[0].co.lerp(e.verts[1].co, 0.5) - current_co
+            e_island = island_check(e)
+            diff = abs(current_island - e_island)
+            return vec.length + diff
 
         bm.edges.ensure_lookup_table()
 
@@ -249,7 +335,12 @@ class SortEdgeByDist(bpy.types.Operator):
             
             for v in this_edge.verts:
                 for ve in v.link_edges:
-                    if ve not in edges_done and ve != this_edge:
+                    this_island = 0
+                    other_island = 0
+                    if self.respect_islands:
+                        this_island = island_check(this_edge)
+                        other_island = island_check(ve)
+                    if ve not in edges_done and ve != this_edge and this_island == other_island:
                         edges.append(ve)
                         if ve.is_boundary == True:
                             boundary_edges.append(ve)
@@ -284,7 +375,11 @@ class SortEdgeByDist(bpy.types.Operator):
             
             if found_other_edge == False:
                 current_co = this_edge.verts[0].co.lerp(this_edge.verts[1].co, 0.5)
-                edges_remain.sort(key=geo_edge_dist_sort)
+                if self.respect_islands:
+                    current_island = island_check(this_edge)
+                    edges_remain.sort(key=geo_edge_dist_plus_island_sort)
+                else:
+                    edges_remain.sort(key=geo_edge_dist_sort)
                 # if self.bottom_up_mix:
                 #     edges_remain.sort(key=geo_edge_dist_sort_z)
                 next_edge = edges_remain[0]
@@ -332,10 +427,22 @@ class SortFaceByDist(bpy.types.Operator):
         default = True
         ) # type: ignore
 
+    respect_islands : bP(
+        name = "Respect UV Islands",
+        description = "Respect mesh UV islands when sorting",
+        default = False
+        ) # type: ignore
+
     def execute(self, context):
         props = context.scene.sloppy_props
         bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
         current_co = mathutils.Vector((0,0,0))
+        current_island = 0
+        islands = []
+        uv_layer = bm.loops.layers.uv.verify()
+
+        if self.respect_islands == True:
+            islands = bmesh_utils.bmesh_linked_uv_islands(bm, uv_layer)
 
         attr_dict = [
             {"name": "facesortdist", "type": "FLOAT", "domain": "FACE", "layer": None}
@@ -377,6 +484,19 @@ class SortFaceByDist(bpy.types.Operator):
         def total_distance_sort(e):
             return e[facesortdist]
 
+        def island_check(f):
+            f_island = 0
+            for i, island in enumerate(islands):
+                if f in island:
+                    f_island = i
+            return f_island
+
+        def geo_face_dist_plus_island_sort(f):
+            vec = f.calc_center_median() - current_co
+            f_island = island_check(f)
+            diff = abs(current_island - f_island)
+            return vec.length + diff
+
         bm.verts.ensure_lookup_table()
 
         faces_remain = []
@@ -410,7 +530,12 @@ class SortFaceByDist(bpy.types.Operator):
             
             for e in this_face.edges:
                 for f in e.link_faces:
-                    if f not in faces_done:
+                    this_island = 0
+                    other_island = 0
+                    if self.respect_islands:
+                        this_island = island_check(this_face)
+                        other_island = island_check(f)
+                    if f not in faces_done and this_island == other_island:
                         potential_faces.append(f)
                         for fe in f.edges:
                             if fe.is_boundary == True:
@@ -447,7 +572,11 @@ class SortFaceByDist(bpy.types.Operator):
                     last_face = potential_faces[0]
             else:
                 current_co = this_face.calc_center_median()
-                faces_remain.sort(key=geo_face_dist_sort)
+                if self.respect_islands == True:
+                    current_island = island_check(this_face)
+                    faces_remain.sort(key=geo_face_dist_plus_island_sort)
+                else:
+                    faces_remain.sort(key=geo_face_dist_sort)
                 # if self.bottom_up_mix:
                 #     faces_remain.sort(key=geo_face_dist_sort_z)
                 next_face = faces_remain[0]

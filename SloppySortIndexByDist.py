@@ -9,6 +9,27 @@ class SortVertByDist(bpy.types.Operator):
     bl_description = "Travel along edges until all vertices are visited and sort vertices according to the distance traveled."
     bl_options = {'REGISTER', 'UNDO'}
 
+    iP = bpy.props.IntProperty
+    fP = bpy.props.FloatProperty
+    fvP = bpy.props.FloatVectorProperty
+    bP = bpy.props.BoolProperty
+    eP = bpy.props.EnumProperty
+    bvP = bpy.props.BoolVectorProperty
+    sP = bpy.props.StringProperty
+
+    bottom_up_mix : bP(
+        name = "Weigh From Botom Up",
+        description = "Weigh sorting of potential next element with position in Z",
+        default = True
+        ) # type: ignore
+
+    z_only : bP(
+        name = "Sort By Z",
+        description = "Sort potential next element by position in Z",
+        default = True
+        ) # type: ignore
+    
+
     def execute(self, context):
         props = context.scene.sloppy_props
         bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
@@ -82,14 +103,14 @@ class SortVertByDist(bpy.types.Operator):
                             has_boundary = True
             
             
-            if props.distsort_bottom_up == True:
-                if props.distsort_z_only == True:
+            if self.bottom_up_mix == True:
+                if self.z_only == True:
                     edges.sort(key=edge_sort_only_z)
                     boundary_edges.sort(key=edge_sort_only_z)
                 else:
                     edges.sort(key=edge_length_sort_z)
                     boundary_edges.sort(key=edge_length_sort_z)
-            if props.distsort_bottom_up == False:
+            if self.bottom_up_mix == False:
                 edges.sort(key=edge_length_sort)
                 boundary_edges.sort(key=edge_length_sort)
 
@@ -110,7 +131,7 @@ class SortVertByDist(bpy.types.Operator):
             else:
                 current_co = this_vert.co
                 verts_remain.sort(key=geo_vert_dist_sort)
-                # if props.distsort_bottom_up:
+                # if self.bottom_up_mix:
                 #     verts_remain.sort(key=geo_vert_dist_sort_z)
                 next_vert = verts_remain[0]
                 vec = verts_remain[0].co - this_vert.co
@@ -138,6 +159,26 @@ class SortEdgeByDist(bpy.types.Operator):
     bl_label = "Sort Edges By Distance"
     bl_description = "Travel along edges until all edges are visited and sort edges according to the distance traveled."
     bl_options = {'REGISTER', 'UNDO'}
+
+    iP = bpy.props.IntProperty
+    fP = bpy.props.FloatProperty
+    fvP = bpy.props.FloatVectorProperty
+    bP = bpy.props.BoolProperty
+    eP = bpy.props.EnumProperty
+    bvP = bpy.props.BoolVectorProperty
+    sP = bpy.props.StringProperty
+
+    bottom_up_mix : bP(
+        name = "Weigh From Botom Up",
+        description = "Weigh sorting of potential next element with position in Z",
+        default = True
+        ) # type: ignore
+
+    z_only : bP(
+        name = "Sort By Z",
+        description = "Sort potential next element by position in Z",
+        default = True
+        ) # type: ignore
 
     def execute(self, context):
         props = context.scene.sloppy_props
@@ -214,14 +255,14 @@ class SortEdgeByDist(bpy.types.Operator):
                             boundary_edges.append(ve)
                             has_boundary = True
             
-            if props.distsort_bottom_up == True:
-                if props.distsort_z_only == True:
+            if self.bottom_up_mix == True:
+                if self.z_only == True:
                     edges.sort(key=edge_sort_only_z)
                     boundary_edges.sort(key=edge_sort_only_z)
                 else:
                     edges.sort(key=edge_length_sort_z)
                     boundary_edges.sort(key=edge_length_sort_z)
-            if props.distsort_bottom_up == False:
+            if self.bottom_up_mix == False:
                 edges.sort(key=edge_length_sort)
                 boundary_edges.sort(key=edge_length_sort)
             
@@ -244,7 +285,7 @@ class SortEdgeByDist(bpy.types.Operator):
             if found_other_edge == False:
                 current_co = this_edge.verts[0].co.lerp(this_edge.verts[1].co, 0.5)
                 edges_remain.sort(key=geo_edge_dist_sort)
-                # if props.distsort_bottom_up:
+                # if self.bottom_up_mix:
                 #     edges_remain.sort(key=geo_edge_dist_sort_z)
                 next_edge = edges_remain[0]
                 vec = edges_remain[0].verts[0].co.lerp(this_edge.verts[1].co, 0.5) - this_edge.verts[0].co.lerp(this_edge.verts[1].co, 0.5)
@@ -270,6 +311,26 @@ class SortFaceByDist(bpy.types.Operator):
     bl_label = "Sort Faces By Distance"
     bl_description = "Travel along faces until all faces are visited and sort faces according to the distance traveled."
     bl_options = {'REGISTER', 'UNDO'}
+
+    iP = bpy.props.IntProperty
+    fP = bpy.props.FloatProperty
+    fvP = bpy.props.FloatVectorProperty
+    bP = bpy.props.BoolProperty
+    eP = bpy.props.EnumProperty
+    bvP = bpy.props.BoolVectorProperty
+    sP = bpy.props.StringProperty
+
+    bottom_up_mix : bP(
+        name = "Weigh From Botom Up",
+        description = "Weigh sorting of potential next element with position in Z",
+        default = True
+        ) # type: ignore
+
+    z_only : bP(
+        name = "Sort By Z",
+        description = "Sort potential next element by position in Z",
+        default = True
+        ) # type: ignore
 
     def execute(self, context):
         props = context.scene.sloppy_props
@@ -358,14 +419,14 @@ class SortFaceByDist(bpy.types.Operator):
                                 has_boundary = True
             
             
-            if props.distsort_bottom_up == True:
-                if props.distsort_z_only == True:
+            if self.bottom_up_mix == True:
+                if self.z_only == True:
                     potential_faces.sort(key=face_sort_only_z)
                     boundary_faces.sort(key=face_sort_only_z)
                 else:
                     potential_faces.sort(key=face_avg_length_sort_z)
                     boundary_faces.sort(key=face_avg_length_sort_z)
-            if props.distsort_bottom_up == False:
+            if self.bottom_up_mix == False:
                 potential_faces.sort(key=face_avg_length_sort)
                 boundary_faces.sort(key=face_avg_length_sort)
             
@@ -387,7 +448,7 @@ class SortFaceByDist(bpy.types.Operator):
             else:
                 current_co = this_face.calc_center_median()
                 faces_remain.sort(key=geo_face_dist_sort)
-                # if props.distsort_bottom_up:
+                # if self.bottom_up_mix:
                 #     faces_remain.sort(key=geo_face_dist_sort_z)
                 next_face = faces_remain[0]
                 vec = faces_remain[0].calc_center_median() - this_face.calc_center_median()

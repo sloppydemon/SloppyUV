@@ -8,6 +8,90 @@ class SloppySeamGen(bpy.types.Operator):
     bl_description = "Generate seams according to edge concavity, among other things"
     bl_options = {'REGISTER', 'UNDO'}
 
+    iP = bpy.props.IntProperty
+    fP = bpy.props.FloatProperty
+    fvP = bpy.props.FloatVectorProperty
+    bP = bpy.props.BoolProperty
+    eP = bpy.props.EnumProperty
+    bvP = bpy.props.BoolVectorProperty
+    sP = bpy.props.StringProperty
+
+    angle_factor : fP(
+        name = "Concavity Influence",
+        description = "Influence of concavity on seam generation",
+        default = 1,
+        min = 0,
+        max = 1
+        ) # type: ignore
+
+    avg_angle_factor : fP(
+        name = "Average Concavity Influence",
+        description = "Influence of averaged area concavity on seam generation",
+        default = 0,
+        min = 0,
+        max = 1
+        ) # type: ignore
+
+    ao_factor : fP(
+        name = "AO Influence",
+        description = "Influence of ambient occlusion on seam generation",
+        default = 0,
+        min = 0,
+        max = 1
+        ) # type: ignore
+
+    ed_factor : fP(
+        name = "Edge Density Influence",
+        description = "Influence of edge density on seam generation",
+        default = 0,
+        min = 0,
+        max = 1
+        ) # type: ignore
+
+    no_rounds : iP(
+        name = "Iterations",
+        description = "Number of initial iterations",
+        default = 20,
+        min = 1,
+        max = 1000
+        ) # type: ignore
+
+    no_retries : iP(
+        name = "Max Retries",
+        description = "Maximum number of retry iterations",
+        default = 100,
+        min = 1,
+        max = 1000
+        ) # type: ignore
+
+    angle_thresh_start : fP(
+        name = "Min Angle Threshold",
+        description = "Initial angular threshold",
+        default = -50,
+        min = -180,
+        max = 180
+        ) # type: ignore
+
+    angle_thresh_end : fP(
+        name = "Max Angle Threshold",
+        description = "Maximum angular threshold",
+        default = -20,
+        min = -180,
+        max = 180
+        ) # type: ignore
+
+    clear_seam : bP(
+        name = "Clear Seams",
+        description = "Clear any existing seams.",
+        default = True
+        ) # type: ignore
+
+    unwrap : bP(
+        name = "Unwrap",
+        description = "Run auto-unwrap. (Mainly to check if islands turn out as desired.)",
+        default = True
+        ) # type: ignore
+
     def execute(self, context):
         props = context.scene.sloppy_props
         bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
@@ -38,10 +122,10 @@ class SloppySeamGen(bpy.types.Operator):
         max_edge_density = 0.0
         min_avg_angle = 0.0
         max_avg_angle = 0.0
-        ao_fac = props.seamgen_ao_fac
-        ed_fac = props.seamgen_ed_fac
-        angle_fac = props.seamgen_angle_fac
-        avg_angle_fac = props.seamgen_avg_angle_fac
+        ao_fac = self.ao_factor
+        ed_fac = self.ed_factor
+        angle_fac = self.angle_factor
+        avg_angle_fac = self.avg_angle_factor
 
         def angle_sort(e):
             result = 0.0
@@ -140,6 +224,10 @@ class SloppySeamGen(bpy.types.Operator):
 
         all_edges = []
 
+        if self.clear_seam == True:
+            for edge in bm.edges:
+                edge.seam = False
+
         e_iter = 0
         for edge in bm.edges:
             if edge.seam == False:
@@ -186,13 +274,13 @@ class SloppySeamGen(bpy.types.Operator):
 
         seams = []
 
-        rounds = props.seamgen_rounds
-        max_retries = props.seamgen_retries
+        rounds = self.no_rounds
+        max_retries = self.no_retries
 
         near_parallel_edges = []
 
-        angle_threshold_start = props.seamgen_angle_threshold_start
-        angle_threshold_end = props.seamgen_angle_threshold_end
+        angle_threshold_start = self.angle_thresh_start
+        angle_threshold_end = self.angle_thresh_end
         angle_threshold_interval = angle_threshold_end - angle_threshold_start
         angle_threshold_point = 0
         if max_retries > 0:
@@ -323,5 +411,20 @@ class SloppySeamGen(bpy.types.Operator):
                         for edge in current_seam:
                             edge.seam = False
         bpy.context.active_object.data.update()
+
+        if self.unwrap == True:
+            selected_before = []
+            loops_selected_before = []
+            for face in bm.faces:
+                if face.select == True:
+                    selected_before.append(face)
+                face.select = True
+            bpy.ops.uv.unwrap(method='ANGLE_BASED', margin=0)
+            for face in bm.faces:
+                if face in selected_before:
+                    pass
+                else:
+                    face.select = False
+
         
         return {"FINISHED"}

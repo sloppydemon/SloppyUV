@@ -175,6 +175,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
     def shift_select_by_index_bm(self, domain, choose_domain, shift_amount, shift_by_len, shift_by_len_neg, extend, both_directions, output_only, in_bm):
         '''Shift mesh element selection by their indices. 
         (Can also be used to only output a list of elements.)'''
+        
         out_arr = []
         dom = None
         modes = bpy.context.tool_settings.mesh_select_mode[:]
@@ -192,6 +193,8 @@ class SloppyProperties(bpy.types.PropertyGroup):
                 dom = in_bm.edges
             if modes[2]:
                 dom = in_bm.faces
+
+        dom.ensure_lookup_table()
 
         indices = [i.index for i in dom if i.select == True]
 
@@ -497,22 +500,54 @@ class SloppyProperties(bpy.types.PropertyGroup):
 
         return None
     
+    def update_seamgen_vars(self, context):
+        SloppySeamGen.angle_factor = self.seamgen_angle_fac
+        SloppySeamGen.avg_angle_factor = self.seamgen_avg_angle_fac
+        SloppySeamGen.ao_factor = self.seamgen_ao_fac
+        SloppySeamGen.ed_factor = self.seamgen_ed_fac
+        SloppySeamGen.no_rounds = self.seamgen_rounds
+        SloppySeamGen.no_retries = self.seamgen_retries
+        SloppySeamGen.angle_thresh_start = self.seamgen_angle_threshold_start
+        SloppySeamGen.angle_thresh_end = self.seamgen_angle_threshold_end
+        SloppySeamGen.clear_seam = self.seamgen_clear_seam
+        SloppySeamGen.unwrap = self.seamgen_unwrap
+        return None
+    
+    def update_distsort_vars(self, context):
+        SortVertByDist.bottom_up_mix = self.distsort_bottom_up
+        SortVertByDist.z_only = self.distsort_z_only
+        SortEdgeByDist.bottom_up_mix = self.distsort_bottom_up
+        SortEdgeByDist.z_only = self.distsort_z_only
+        SortFaceByDist.bottom_up_mix = self.distsort_bottom_up
+        SortFaceByDist.z_only = self.distsort_z_only
+        return None
+    
     seamgen_clear_seam : bP (
         name = "Clear Seam",
         description = "Clear existing seam before generating new seam.",
-        default = False
+        default = False,
+        update = update_seamgen_vars
+        ) # type: ignore
+    
+    seamgen_unwrap : bP (
+        name = "Unwrap",
+        description = "Auto-unwrap. (Mainly to check if islands turn out as desired.)",
+        default = False,
+        update = update_seamgen_vars
         ) # type: ignore
     
     distsort_bottom_up : bP (
         name = "From Bottom Up",
         description = "Weigh sorting of distance sort from bottom up.",
-        default = False
+        default = False,
+        update = update_distsort_vars
         ) # type: ignore
     
     distsort_z_only : bP (
         name = "Only Sort From Z",
         description = "Only sort potential elements from Z.",
-        default = False
+        default = False,
+        update = update_distsort_vars
         ) # type: ignore
     
     seamgen_ao_fac : fP (
@@ -522,7 +557,8 @@ class SloppyProperties(bpy.types.PropertyGroup):
         min = 0.0,
         soft_min = 0.0,
         max = 1.0,
-        soft_max = 1.0
+        soft_max = 1.0,
+        update = update_seamgen_vars
         ) # type: ignore
     
     seamgen_ed_fac : fP (
@@ -532,19 +568,22 @@ class SloppyProperties(bpy.types.PropertyGroup):
         min = 0.0,
         soft_min = 0.0,
         max = 1.0,
-        soft_max = 1.0
+        soft_max = 1.0,
+        update = update_seamgen_vars
         ) # type: ignore
     
     seamgen_rounds : iP (
         name = "Iterations",
         description = "Number of iterations of seam generation.",
-        default = 20
+        default = 20,
+        update = update_seamgen_vars
         ) # type: ignore
     
     seamgen_retries : iP (
         name = "Number of Retries",
         description = "Number of retries at end of each iteration of seam generation.",
-        default = 100
+        default = 100,
+        update = update_seamgen_vars
         ) # type: ignore
     
     seamgen_angle_threshold_start : fP (
@@ -554,7 +593,8 @@ class SloppyProperties(bpy.types.PropertyGroup):
         min = -180.0,
         soft_min = -180.0,
         max = 180.0,
-        soft_max = 180.0
+        soft_max = 180.0,
+        update = update_seamgen_vars
         ) # type: ignore
     
     seamgen_angle_threshold_end : fP (
@@ -564,7 +604,8 @@ class SloppyProperties(bpy.types.PropertyGroup):
         min = -180.0,
         soft_min = -180.0,
         max = 180.0,
-        soft_max = 180.0
+        soft_max = 180.0,
+        update = update_seamgen_vars
         ) # type: ignore
     
     seamgen_angle_fac : fP (
@@ -574,7 +615,8 @@ class SloppyProperties(bpy.types.PropertyGroup):
         min = 0.0,
         soft_min = 0.0,
         max = 1.0,
-        soft_max = 1.0
+        soft_max = 1.0,
+        update = update_seamgen_vars
         ) # type: ignore
     
     seamgen_avg_angle_fac : fP (
@@ -584,7 +626,8 @@ class SloppyProperties(bpy.types.PropertyGroup):
         min = 0.0,
         soft_min = 0.0,
         max = 1.0,
-        soft_max = 1.0
+        soft_max = 1.0,
+        update = update_seamgen_vars
         ) # type: ignore
     
     space_edges : bP(
@@ -2065,6 +2108,156 @@ class PeltUVs(bpy.types.Operator):
         
         return {"FINISHED"}
 
+class SloppySelectByIndex(bpy.types.Operator):
+    bl_idname = "operator.select_by_index"
+    bl_label = "Select By Index"
+    bl_description = "Select mesh element by index or range of indices. (Can also be used to only output a list of elements.)"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    iP = bpy.props.IntProperty
+    fP = bpy.props.FloatProperty
+    fvP = bpy.props.FloatVectorProperty
+    bP = bpy.props.BoolProperty
+    eP = bpy.props.EnumProperty
+    bvP = bpy.props.BoolVectorProperty
+    sP = bpy.props.StringProperty
+
+    max_i = 999999999
+
+    domain_enum : eP(
+        name = "Domain",
+        description = "Element domain to select",
+        items = [
+            ("A", "Vertex", ""),
+            ("B", "Edge", ""),
+            ("C", "Face", "")
+            ]
+        ) # type: ignore
+
+    choose_domain : bP(
+        name = "Force Domain",
+        description = "Force the element domain to select",
+        default = False
+        ) # type: ignore
+
+    uvs : bP(
+        name = "UV",
+        description = "Select UVs",
+        default = False
+        ) # type: ignore
+
+    i_start : iP(
+        name = "First Index",
+        description = "First index to select",
+        default = 0,
+        min = 0,
+        max = max_i
+        ) # type: ignore
+
+    i_end : iP(
+        name = "Last Index",
+        description = "Last index to select, if range",
+        default = 0,
+        min = 0,
+        max = max_i
+        ) # type: ignore
+
+    sel_range : bP(
+        name = "Select Range",
+        description = "Select a range of indices",
+        default = False
+        ) # type: ignore
+
+    extend : bP(
+        name = "Extend",
+        description = "Extend existing selection",
+        default = False
+        ) # type: ignore
+
+    def execute(self, context):
+        props = context.scene.sloppy_props
+        in_bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
+        domains = ["A", "B", "C"]
+        domain = domains.index(self.domain_enum)
+        self.max_i = max(len(in_bm.verts), len(in_bm.edges), len(in_bm.faces))
+        props.select_by_index_bm(domain, self.choose_domain, self.uvs, self.i_start, self.i_end, self.sel_range, self.extend, False, in_bm)
+        
+        return {"FINISHED"}
+
+class SloppyShiftSelectByIndex(bpy.types.Operator):
+    bl_idname = "operator.shift_select_by_index"
+    bl_label = "Shift Selection By Index"
+    bl_description = "Shift mesh element selection by index. (Can also be used to only output a list of elements.)"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    iP = bpy.props.IntProperty
+    fP = bpy.props.FloatProperty
+    fvP = bpy.props.FloatVectorProperty
+    bP = bpy.props.BoolProperty
+    eP = bpy.props.EnumProperty
+    bvP = bpy.props.BoolVectorProperty
+    sP = bpy.props.StringProperty
+
+    max_i = 999999999
+
+    domain_enum : eP(
+        name = "Domain",
+        description = "Element domain to select",
+        items = [
+            ("A", "Vertex", ""),
+            ("B", "Edge", ""),
+            ("C", "Face", "")
+            ]
+        ) # type: ignore
+
+    choose_domain : bP(
+        name = "Force Domain",
+        description = "Force the element domain to select",
+        default = False
+        ) # type: ignore
+
+    shift_amount : iP(
+        name = "Shift Amount",
+        description = "Shift indices by this amount",
+        default = 1,
+        min = -max_i,
+        max = max_i
+        ) # type: ignore
+
+    shift_by_len : bP(
+        name = "Shift By Number of Selected",
+        description = "Shift by number of previously selected elements",
+        default = False
+        ) # type: ignore
+
+    shift_by_len_neg : bP(
+        name = "Negative Selection Amount",
+        description = "Multiply number of previously selected elements by -1",
+        default = False
+        ) # type: ignore
+
+    extend : bP(
+        name = "Extend",
+        description = "Extend existing selection",
+        default = False
+        ) # type: ignore
+
+    both_directions : bP(
+        name = "Up and Down",
+        description = "Shift selection in both positive and negative directions",
+        default = False
+        ) # type: ignore
+
+    def execute(self, context):
+        props = context.scene.sloppy_props
+        in_bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
+        domains = ["A", "B", "C"]
+        domain = domains.index(self.domain_enum)
+        self.max_i = max(len(in_bm.verts), len(in_bm.edges), len(in_bm.faces))
+        props.shift_select_by_index_bm(domain, self.choose_domain, self.shift_amount, self.shift_by_len, self.shift_by_len_neg, self.extend, self.both_directions, False, in_bm)
+        
+        return {"FINISHED"}
+
 classes = [SloppyProperties,
            SloppyErrorDialog,
            SloppyUVPanel,
@@ -2084,7 +2277,9 @@ classes = [SloppyProperties,
            SortEdgeByDist,
            SortFaceByDist,
            SloppySortDistPanel,
-           SloppyProcAttrBake
+           SloppyProcAttrBake,
+           SloppySelectByIndex,
+           SloppyShiftSelectByIndex
            ]
 
 def register():
@@ -2095,6 +2290,7 @@ def register():
             bpy.utils.unregister_class(cls)
             bpy.utils.register_class(cls)
     bpy.types.Scene.sloppy_props = bpy.props.PointerProperty(type = SloppyProperties)
+    SloppySeamGen.props = bpy.context.scene.sloppy_props
 
         
 def unregister():

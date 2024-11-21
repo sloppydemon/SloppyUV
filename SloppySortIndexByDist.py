@@ -497,7 +497,7 @@ class SortFaceByDist(bpy.types.Operator):
             diff = abs(current_island - f_island)
             return vec.length + diff
 
-        bm.verts.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
 
         faces_remain = []
         faces_done = []

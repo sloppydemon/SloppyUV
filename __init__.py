@@ -22,6 +22,7 @@ from SloppyUV.SloppySortIndexByDist import SortVertByDist # type: ignore
 from SloppyUV.SloppySortIndexByDist import SortEdgeByDist # type: ignore
 from SloppyUV.SloppySortIndexByDist import SortFaceByDist # type: ignore
 from SloppyUV.SloppyBakeProcAttr import SloppyProcAttrBake # type: ignore
+from SloppyUV.SloppyProcedurals import ProceduralQuadUVUnfold # type: ignore
 
 class SloppyProperties(bpy.types.PropertyGroup):
     
@@ -48,6 +49,22 @@ class SloppyProperties(bpy.types.PropertyGroup):
                             break
         outco = bpy_extras.view3d_utils.location_3d_to_region_2d(view3d_region, view3d, vec)
         return outco
+
+    def viewvec(self, loc):
+        '''Fetch vectpr pointing from 3D View origin to point on screen'''
+        view3d_region = None
+        view3d = None
+        for scr in bpy.data.screens:
+            for ar in scr.areas:
+                if ar.type == 'VIEW_3D':
+                    view3d_region = ar.regions[0]
+                    for spc in ar.spaces:
+                        if spc.type == 'VIEW_3D':
+                            view3d = spc.region_3d
+                            break
+        outvec = bpy_extras.view3d_utils.region_2d_to_vector_3d(view3d_region, view3d, loc)
+        
+        return outvec.normalized()
     
     def find_or_add_attribute(self, name, attr_type, attr_domain):
         dat = bpy.context.object.data
@@ -229,6 +246,13 @@ class SloppyProperties(bpy.types.PropertyGroup):
                 dom[i].select = True
         bpy.context.active_object.data.update()
         return out_arr
+    
+    def calc_average_normal(self, faces):
+        '''Calculate average normal of a list of faces.'''
+        norm = mathutils.Vector((0,0,0))
+        for face in faces:
+            norm += face.normal
+        return norm.normalized()
 
     def remap_val(self, val, in_min, in_max, out_min, out_max):
         in_interval = in_max - in_min
@@ -2279,7 +2303,8 @@ classes = [SloppyProperties,
            SloppySortDistPanel,
            SloppyProcAttrBake,
            SloppySelectByIndex,
-           SloppyShiftSelectByIndex
+           SloppyShiftSelectByIndex,
+           ProceduralQuadUVUnfold
            ]
 
 def register():

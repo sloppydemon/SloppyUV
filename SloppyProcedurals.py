@@ -679,6 +679,8 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
             next_round = []
             next_round_cos = []
             next_round_dirs = []
+            next_round_dir_arrs = []
+            main_axis_depleted = []
             init_face_corner_verts = []
 
             # process initial face (virtual and otherwise)
@@ -706,13 +708,21 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                     if ivl.index in island_loops:
                         ivl[uv_layer].uv = ivco
             
-            if self.unfold_mode == "A":
+            redo_round = False
+            round_done = False
+
+            while round_done == False:
                 for i, ife in enumerate(init_face_dir_arr):
                     dirs_to_do = [0,1,2,3]
                     if self.unfold_mode == "B":
                         dirs_to_do = [1,3]
                     elif self.unfold_mode == "C":
                         dirs_to_do = [0,2]
+                    if redo_round == True:
+                        if self.unfold_mode == "B":
+                            dirs_to_do = [0,2]
+                        elif self.unfold_mode == "C":
+                            dirs_to_do = [1,3]
                     if i in dirs_to_do:
                         for ifef in ife.link_faces:
                             if ifef in faces_remain and ifef not in next_round:
@@ -723,13 +733,118 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                                     for vif in init_virtual_face:
                                         if ife in vif.edges:
                                             adj_face = vif
-                                next_round_dirs.append(get_other_dir_edges(ifef.edges, init_face_corner_verts, adj_face, i))
+                                next_round_dir_arrs.append(get_other_dir_edges(ifef.edges, init_face_corner_verts, adj_face, i))
+                                next_round_dirs.append(i)
+                                round_done = True
             
-            process_sequence += 1
-
             bpy.context.active_object.data.update()
 
-            while len(faces_remain)
+            # remaining rounds while-loop
+            while len(faces_remain) > 0:
+                process_sequence += 1
+                this_round = next_round.copy()
+                this_round_cos = next_round_cos.copy()
+                this_round_dirs = next_round_dirs.copy()
+                this_round_dir_arrs = next_round_dir_arrs.copy()
+                next_round = []
+                next_round_cos = []
+                next_round_dirs = []
+                next_round_dir_arrs = []
+
+                for face in faces_remain:
+                    if face[trailing_tri] == True:
+                        faces_remain.remove(face)
+
+                for trf, trco, trd, trda in zip(this_round, this_round_cos, this_round_dirs, this_round_dir_arrs):
+                    is_virtual_quad = False
+                    virtual_quad = [None, None]
+                    virtual_verts = []
+                    corners = []
+                    cos = [None, None, None, None]
+
+                    if trf in faces_remain:
+                        faces_remain.remove(trf)
+
+                    if trf[virtual_quad] == 1:
+                        trof = bm.faces[trf[other_tri]]
+                        virtual_quad[0] = trf
+                        virtual_quad[1] = trof
+                        is_virtual_quad = True
+                        if trof in faces_remain:
+                            faces_remain.remove(trof)
+
+
+                    avg_edge_length_x = (trda[0].calc_length() + trda[2].calc_length()) / 2
+                    avg_edge_length_y = (trda[1].calc_length() + trda[3].calc_length()) / 2
+                    
+                    if is_virtual_quad == True:
+                        for vf in virtual_quad:
+                            for vfv in vf.verts:
+                                if vfv not in virtual_verts:
+                                    vfv.append(vfv)
+                        corners = get_corner_verts(trda, virtual_verts)
+                    else:
+                        corners = get_corner_verts(trda, trf.verts)
+                    
+                    if trd == 0:
+                        cos[0] = trco[0] + mathutils.Vector((0,avg_edge_length_y))
+                        cos[1] = trco[1] + mathutils.Vector((0,avg_edge_length_y))
+                        cos[2] = trco[1]
+                        cos[3] = trco[0]
+                    elif trd == 1:
+                        cos[0] = trco[1]
+                        cos[1] = trco[1] + mathutils.Vector((-avg_edge_length_x,0))
+                        cos[2] = trco[2] + mathutils.Vector((-avg_edge_length_x,0))
+                        cos[3] = trco[2]
+                    elif trd == 2:
+                        cos[0] = trco[3]
+                        cos[1] = trco[2]
+                        cos[2] = trco[2] + mathutils.Vector((0,-avg_edge_length_y))
+                        cos[3] = trco[3] + mathutils.Vector((0,-avg_edge_length_y))
+                    elif trd == 3:
+                        cos[0] = trco[1] + mathutils.Vector((avg_edge_length_x,0))
+                        cos[1] = trco[0]
+                        cos[2] = trco[3]
+                        cos[3] = trco[3] + mathutils.Vector((avg_edge_length_x,0))
+                    for vi, corner in corners:
+                        for vil in corner.link_loops:
+                            if vil.index in island_loops:
+                                vil[uv_layer].uv = cos[vi]
+                    
+                    redo_round = False
+                    round_done = False
+
+                    while round_done == False:
+                        for i, ife in enumerate(init_face_dir_arr):
+                            dirs_to_do = [0,1,2,3]
+                            if self.unfold_mode == "B":
+                                dirs_to_do = [1,3]
+                                print("Only growing in X.")
+                            elif self.unfold_mode == "C":
+                                dirs_to_do = [0,2]
+                                print("Only growing in Y.")
+                            if redo_round == True:
+                                if self.unfold_mode == "B":
+                                    dirs_to_do = [0,2]
+                                    print("Only growing in Y.")
+                                elif self.unfold_mode == "C":
+                                    dirs_to_do = [1,3]
+                                    print("Only growing in X.")
+                            if i in dirs_to_do:
+                                for ifef in ife.link_faces:
+                                    if ifef in faces_remain and ifef not in next_round:
+                                        next_round.append(ifef)
+                                        next_round_cos.append(init_face_corner_vert_cos)
+                                        adj_face = init_face
+                                        if init_face_is_virtual == True:
+                                            for vif in init_virtual_face:
+                                                if ife in vif.edges:
+                                                    adj_face = vif
+                                        next_round_dir_arrs.append(get_other_dir_edges(ifef.edges, init_face_corner_verts, adj_face, i))
+                                        next_round_dirs.append(i)
+                                        round_done = True
+
+
         
         bpy.context.active_object.data.update()
 

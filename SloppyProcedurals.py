@@ -252,7 +252,7 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                 for loop in main_tri.loops:
                     if loop.vert in adjacency_verts:
                         adj_vert_arr_app = [loop.vert]
-                        adj_vert_angle = loop.calc_angle()
+                        adj_vert_angle = math.degrees(loop.calc_angle())
                         adj_vert_arr_app.append(adj_vert_angle)
                         adj_verts_arr.append(adj_vert_arr_app)
                 adj_verts_arr.sort(key=adj_vert_angle_sort)
@@ -515,6 +515,7 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
             process_sequence = 0
             faces_remain = []
             faces_selected = []
+            island_loops = []
             init_face = None
             init_virtual_face = []
             avg_norm = mathutils.Vector((0,0,0))
@@ -529,6 +530,8 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                         avg_angle += 90
                     else:
                         avg_angle += math.degrees(fe.calc_face_angle())
+                for fl in face.loops:
+                    island_loops.append(fl.index)
                 avg_angle /= angle_count
                 new_max_angle = max(avg_angle, max_avg_angle)
                 new_min_angle = min(avg_angle, min_avg_angle)
@@ -631,6 +634,7 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
 
             quant_arr.sort(key=quant_sort)
             current_dir_array = quant_arr[0][1]
+            init_face_dir_arr = [None, None, None, None]
 
             if props.verbose == True:
                 msg_start = "Most regular face for island "
@@ -645,11 +649,88 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                 print(msg)
             
             if init_face_is_virtual == True:
+                vif_edges = []
+                for vif in init_virtual_face:
+                    vif.select = True
+                for vife in init_virtual_face[0].edges:
+                    if vife not in init_virtual_face[1].edges:
+                        vif_edges.append(vife)
+                for vife in init_virtual_face[1].edges:
+                    if vife not in init_virtual_face[0].edges:
+                        vif_edges.append(vife)
+                init_face_dir_arr = get_init_dir_edges(vif_edges)
                 for vf in init_virtual_face:
-                    vf.select = True
+                    vif[edge_u] = init_face_dir_arr[0].index
+                    vif[edge_l] = init_face_dir_arr[1].index
+                    vif[edge_d] = init_face_dir_arr[2].index
+                    vif[edge_r] = init_face_dir_arr[3].index
+                    vif[process_sequence] = process_sequence
             else:
                 init_face.select = True
+                init_face_dir_arr = get_init_dir_edges(init_face.edges)
+                init_face[edge_u] = init_face_dir_arr[0].index
+                init_face[edge_l] = init_face_dir_arr[1].index
+                init_face[edge_d] = init_face_dir_arr[2].index
+                init_face[edge_r] = init_face_dir_arr[3].index
+                init_face[process_sequence] = process_sequence
+            
+            bpy.context.active_object.data.update()
 
+            next_round = []
+            next_round_cos = []
+            next_round_dirs = []
+            init_face_corner_verts = []
+
+            # process initial face (virtual and otherwise)
+            if init_face_is_virtual == True:
+                vif_verts = []
+                for vif in init_virtual_face:
+                    if vif in faces_remain:
+                        faces_remain.remove(vif)
+                    for vifv in vif.verts:
+                        if vifv not in vif_verts:
+                            vif_verts.append(vifv)
+                init_face_corner_verts = get_corner_verts(init_face_dir_arr, vif_verts)
+            else:
+                if init_face in faces_remain:
+                    faces_remain.remove(init_face)
+                init_face_corner_verts = get_corner_verts(init_face_dir_arr, init_face.verts)
+            
+            avg_edge_length_x = (init_face_dir_arr[0].calc_length() + init_face_dir_arr[2].calc_length()) / 4
+            avg_edge_length_y = (init_face_dir_arr[1].calc_length() + init_face_dir_arr[3].calc_length()) / 4
+            
+            init_face_corner_vert_cos = [mathutils.Vector((-avg_edge_length_x, avg_edge_length_y)), mathutils.Vector((-avg_edge_length_x, -avg_edge_length_y)), mathutils.Vector((avg_edge_length_x, -avg_edge_length_y)), mathutils.Vector((avg_edge_length_x, avg_edge_length_y))]
+
+            for iv, ivco in zip(init_face_corner_verts, init_face_corner_vert_cos):
+                for ivl in iv.loops:
+                    if ivl.index in island_loops:
+                        ivl[uv_layer].uv = ivco
+            
+            if self.unfold_mode == "A":
+                for i, ife in enumerate(init_face_dir_arr):
+                    dirs_to_do = [0,1,2,3]
+                    if self.unfold_mode == "B":
+                        dirs_to_do = [1,3]
+                    elif self.unfold_mode == "C":
+                        dirs_to_do = [0,2]
+                    if i in dirs_to_do:
+                        for ifef in ife.link_faces:
+                            if ifef in faces_remain and ifef not in next_round:
+                                next_round.append(ifef)
+                                next_round_cos.append(init_face_corner_vert_cos)
+                                adj_face = init_face
+                                if init_face_is_virtual == True:
+                                    for vif in init_virtual_face:
+                                        if ife in vif.edges:
+                                            adj_face = vif
+                                next_round_dirs.append(get_other_dir_edges(ifef.edges, init_face_corner_verts, adj_face, i))
+            
+            process_sequence += 1
+
+            bpy.context.active_object.data.update()
+
+            while len(faces_remain)
+        
         bpy.context.active_object.data.update()
 
         return {"FINISHED"}

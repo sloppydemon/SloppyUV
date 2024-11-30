@@ -90,6 +90,8 @@ class SloppyProperties(bpy.types.PropertyGroup):
                 if attr_type == "FLOAT":
                     layer = bmi.faces.layers.float.get(name)
             if attr_domain == "CORNER":
+                if attr_type == "INT":
+                    layer = bmi.loops.layers.int.get(name)
                 if attr_type == "FLOAT":
                     layer = bmi.loops.layers.float.get(name)
                 if attr_type == "FLOAT_COLOR":
@@ -106,6 +108,8 @@ class SloppyProperties(bpy.types.PropertyGroup):
             if attr_domain == "EDGE":
                 if attr_type == "FLOAT":
                     layer = bmi.edges.layers.float.get(name)
+                if attr_type == "INT":
+                    layer = bmi.edges.layers.int.get(name)
             return layer
     
     def get_dict_layer(self, name, attribute_dict):

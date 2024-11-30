@@ -113,6 +113,7 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
             {"name": "co_ll_y", "type": "FLOAT", "domain": "FACE", "layer": None},
             {"name": "co_lr_y", "type": "FLOAT", "domain": "FACE", "layer": None},
             {"name": "loop_corner_index", "type": "INT", "domain": "CORNER", "layer": None},
+            {"name": "ind_face_uv", "type": "FLOAT_VECTOR", "domain": "CORNER", "layer": None},
             {"name": "virtual_quad", "type": "INT", "domain": "FACE", "layer": None},
             {"name": "vq_other_tri", "type": "INT", "domain": "FACE", "layer": None},
             {"name": "vq_diagonal", "type": "INT", "domain": "FACE", "layer": None},
@@ -169,6 +170,9 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
         nom_dir_edge = props.get_dict_layer("nom_dir_edge", attr_dict)
         process_sequence_max = props.get_dict_layer("process_sequence_max", attr_dict)
         loop_corner_index = props.get_dict_layer("loop_corner_index", attr_dict)
+        ind_face_uv = props.get_dict_layer("ind_face_uv", attr_dict)
+        xi = props.get_dict_layer("xi", attr_dict)
+        yi = props.get_dict_layer("yi", attr_dict)
 
 
         co_attr_arr = [[co_ur_x, co_ur_y], [co_ul_x, co_ul_y], [co_ll_x, co_ll_y], [co_lr_x, co_lr_y]]
@@ -925,6 +929,8 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                 if init_face_is_virtual == True:
                     vif_verts = []
                     for vif in init_virtual_face:
+                        vif[xi] = 0
+                        vif[yi] = 0
                         if vif in faces_remain:
                             faces_remain.remove(vif)
                         for vifv in vif.verts:
@@ -947,6 +953,8 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                     init_face[corner_ul] = init_face_corner_verts[0][1].index
                     init_face[corner_ll] = init_face_corner_verts[0][2].index
                     init_face[corner_lr] = init_face_corner_verts[0][3].index
+                    init_face[xi] = 0
+                    init_face[yi] = 0
             
                 
                 avg_edge_length_x = (init_face_dir_arr[0].calc_length() + init_face_dir_arr[2].calc_length()) / 4
@@ -972,9 +980,33 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                         if init_face_is_virtual == True:
                             if corner_loop in init_virtual_face[0].loops or corner_loop in init_virtual_face[1].loops:
                                 corner_loop[loop_corner_index] = ci
+                                if ci == 0:
+                                    corner_loop[ind_face_uv][0] = 1.0
+                                    corner_loop[ind_face_uv][1] = 1.0
+                                if ci == 1:
+                                    corner_loop[ind_face_uv][0] = 0.0
+                                    corner_loop[ind_face_uv][1] = 1.0
+                                if ci == 2:
+                                    corner_loop[ind_face_uv][0] = 0.0
+                                    corner_loop[ind_face_uv][1] = 0.0
+                                if ci == 3:
+                                    corner_loop[ind_face_uv][0] = 1.0
+                                    corner_loop[ind_face_uv][1] = 0.0
                         if init_face_is_virtual == False:
                             if corner_loop in init_face.loops:
                                 corner_loop[loop_corner_index] = ci
+                                if ci == 0:
+                                    corner_loop[ind_face_uv][0] = 1.0
+                                    corner_loop[ind_face_uv][1] = 1.0
+                                if ci == 1:
+                                    corner_loop[ind_face_uv][0] = 0.0
+                                    corner_loop[ind_face_uv][1] = 1.0
+                                if ci == 2:
+                                    corner_loop[ind_face_uv][0] = 0.0
+                                    corner_loop[ind_face_uv][1] = 0.0
+                                if ci == 3:
+                                    corner_loop[ind_face_uv][0] = 1.0
+                                    corner_loop[ind_face_uv][1] = 0.0
 
                     if iv not in verts_done:
                         verts_done.append(iv)
@@ -1029,6 +1061,12 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                                     print(viz_add_quad(init_face_dir_arr, other_dir_edges, init_face_corner_verts[0], other_corner_verts[0], init_face, ifef, init_virtual_face, other_virtual_face, init_face_is_virtual, is_other_face_virtual, di))
                                     next_round.append(ifef)
                                     ifef[process_sequence_attr] = process_sequence
+                                    if di == 1 or di == 3:
+                                        ifef[xi] = init_face[xi] + 1
+                                        ifef[yi] = init_face[yi]
+                                    if di == 0 or di == 2:
+                                        ifef[xi] = init_face[xi]
+                                        ifef[yi] = init_face[yi] +1
                                     ife[process_sequence_edge] = process_sequence
                                     ife[nom_dir_edge] = di
                                     process_sequence += 1
@@ -1112,9 +1150,33 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                             if is_virtual_quad == True:
                                 if corner_loop in virtual_quad[0].loops or corner_loop in virtual_quad[1].loops:
                                     corner_loop[loop_corner_index] = ci
+                                    if ci == 0:
+                                        corner_loop[ind_face_uv][0] = 1.0
+                                        corner_loop[ind_face_uv][1] = 1.0
+                                    if ci == 1:
+                                        corner_loop[ind_face_uv][0] = 0.0
+                                        corner_loop[ind_face_uv][1] = 1.0
+                                    if ci == 2:
+                                        corner_loop[ind_face_uv][0] = 0.0
+                                        corner_loop[ind_face_uv][1] = 0.0
+                                    if ci == 3:
+                                        corner_loop[ind_face_uv][0] = 1.0
+                                        corner_loop[ind_face_uv][1] = 0.0
                             if is_virtual_quad == False:
                                 if corner_loop in trf.loops:
                                     corner_loop[loop_corner_index] = ci
+                                    if ci == 0:
+                                        corner_loop[ind_face_uv][0] = 1.0
+                                        corner_loop[ind_face_uv][1] = 1.0
+                                    if ci == 1:
+                                        corner_loop[ind_face_uv][0] = 0.0
+                                        corner_loop[ind_face_uv][1] = 1.0
+                                    if ci == 2:
+                                        corner_loop[ind_face_uv][0] = 0.0
+                                        corner_loop[ind_face_uv][1] = 0.0
+                                    if ci == 3:
+                                        corner_loop[ind_face_uv][0] = 1.0
+                                        corner_loop[ind_face_uv][1] = 0.0
                     
                     
                     if is_virtual_quad == False:
@@ -1197,6 +1259,12 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                                             ifef[process_sequence_attr] = process_sequence
                                             ife[process_sequence_edge] = process_sequence
                                             ife[nom_dir_edge] = di
+                                            if di == 1 or di == 3:
+                                                ifef[xi] = adj_face[xi] + 1
+                                                ifef[yi] = adj_face[yi]
+                                            if di == 0 or di == 2:
+                                                ifef[xi] = adj_face[xi]
+                                                ifef[yi] = adj_face[yi] +1
                                             process_sequence += 1
 
                     if self.unfold_mode == "B" or self.unfold_mode == "C":
@@ -1248,6 +1316,12 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                                             ifef[process_sequence_attr] = process_sequence
                                             ife[process_sequence_edge] = process_sequence
                                             ife[nom_dir_edge] = di
+                                            if di == 1 or di == 3:
+                                                ifef[xi] = adj_face[xi] + 1
+                                                ifef[yi] = adj_face[yi]
+                                            if di == 0 or di == 2:
+                                                ifef[xi] = adj_face[xi]
+                                                ifef[yi] = adj_face[yi] +1
                                             process_sequence += 1
                 
                 if len(next_round) == 0:

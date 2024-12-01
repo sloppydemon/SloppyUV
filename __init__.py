@@ -262,7 +262,9 @@ class SloppyProperties(bpy.types.PropertyGroup):
         in_interval = in_max - in_min
         out_interval = out_max - out_min
         in_val = val - in_min
-        in_fac = in_val / in_interval
+        in_fac = 0
+        if in_interval < 0:
+            in_fac = in_val / in_interval
         out_val = out_min + (in_fac * out_interval)
         if out_val > out_max:
             out_val = out_max

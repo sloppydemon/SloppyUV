@@ -748,7 +748,7 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                 angle_count = 0
                 for fe in face.edges:
                     angle_count += 1
-                    if fe.is_boundary == True:
+                    if fe.is_boundary == True or len(face.edges) > 1:
                         avg_angle += 90
                     else:
                         avg_angle += math.degrees(fe.calc_face_angle())

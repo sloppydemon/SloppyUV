@@ -733,8 +733,6 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
             return quad_msg
         # endregion
 
-        previous_island_length_x = 0.0
-        previous_island_length_y = 0.0
         previous_island_end_x = 0.0
         previous_island_end_y = 0.0
 
@@ -744,6 +742,10 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
             bm.faces.ensure_lookup_table()
             edge_length_map_x = [[],[]]
             edge_length_map_y = [[],[]]
+            island_max_x = 0.0
+            island_max_y = 0.0
+            island_min_x = 999.0
+            island_min_y = 999.0
             process_sequence = 0
             faces_remain = []
             faces_done = []
@@ -1050,15 +1052,26 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                     avg_edge_length_x = (init_face_dir_arr[0].calc_length() + init_face_dir_arr[2].calc_length()) / 4
                     avg_edge_length_y = (init_face_dir_arr[1].calc_length() + init_face_dir_arr[3].calc_length()) / 4
                     
-                    init_face_corner_vert_cos = [mathutils.Vector((-avg_edge_length_x, avg_edge_length_y)) + i_offset, mathutils.Vector((-avg_edge_length_x, -avg_edge_length_y)) + i_offset, mathutils.Vector((avg_edge_length_x, -avg_edge_length_y)) + i_offset, mathutils.Vector((avg_edge_length_x, avg_edge_length_y)) + i_offset]
+                    offset_co = mathutils.Vector((previous_island_end_x, previous_island_end_y))
+
+                    init_face_corner_vert_cos = [mathutils.Vector((-avg_edge_length_x, avg_edge_length_y)) + offset_co, mathutils.Vector((-avg_edge_length_x, -avg_edge_length_y)) + offset_co, mathutils.Vector((avg_edge_length_x, -avg_edge_length_y)) + offset_co, mathutils.Vector((avg_edge_length_x, avg_edge_length_y)) + offset_co]
                     for ifvco, ifva in zip(init_face_corner_vert_cos, co_attr_arr):
                         for vif in init_virtual_face:
                             vif[ifva[0]] = ifvco.x
                             vif[ifva[1]] = ifvco.y
+
                     for iv, ivco in zip(init_face_corner_verts[0], init_face_corner_vert_cos):
                         for ivl in iv.link_loops:
                             if ivl.index in island_loops:
                                 ivl[uv_layer].uv = ivco
+                                new_island_max_x = max(island_max_x, ivco.x)
+                                island_max_x = new_island_max_x
+                                new_island_min_x = min(island_min_x, ivco.x)
+                                island_min_x = new_island_min_x
+                                new_island_max_y = max(island_max_y, ivco.y)
+                                island_max_y = new_island_max_y
+                                new_island_min_y = min(island_min_y, ivco.y)
+                                island_min_y = new_island_min_y
                                 ivl[uv_layer].pin_uv = True
                         if iv not in verts_done:
                             verts_done.append(iv)
@@ -1327,10 +1340,18 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
 
                     # region t uv edit
                     if self.pre_calc_edge_lengths == False:
-                        for cornerv, vi in zip(corners[0], corners[1]):
+                        for vi, cornerv in enumerate(corners[0]):
                             for vil in cornerv.link_loops:
                                 if vil.index in island_loops:
                                     vil[uv_layer].uv = cos[vi]
+                                    new_island_max_x = max(island_max_x, cos[vi].x)
+                                    island_max_x = new_island_max_x
+                                    new_island_min_x = min(island_min_x, cos[vi].x)
+                                    island_min_x = new_island_min_x
+                                    new_island_max_y = max(island_max_y, cos[vi].y)
+                                    island_max_y = new_island_max_y
+                                    new_island_min_y = min(island_min_y, cos[vi].y)
+                                    island_min_y = new_island_min_y
                                     vil[uv_layer].pin_uv = True
                             if cornerv not in verts_done:
                                 verts_done.append(cornerv)
@@ -1533,6 +1554,14 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                 bpy.context.active_object.data.update()
             
             # endregion
+
+            if self.pre_calc_edge_lengths == False:
+                offset_add_x = island_max_x - island_min_x
+                if props.verbose == True: print(f"Island {ii} width: {offset_add_x}")
+                offset_add_y = island_max_y - island_min_y
+                if props.verbose == True: print(f"Island {ii} height: {offset_add_y}")
+                previous_island_end_x += self.offset_per_island[0] * offset_add_x
+                previous_island_end_y += self.offset_per_island[1] * offset_add_y
 
             # region apply pre-calc
             if self.pre_calc_edge_lengths == True and (len(edge_length_map_x[0]) + len(edge_length_map_y[0])) > 0:

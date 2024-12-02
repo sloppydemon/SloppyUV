@@ -21,6 +21,7 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
     bvP = bpy.props.BoolVectorProperty
     sP = bpy.props.StringProperty
 
+    # region Property list
     unfold_mode : eP(
         name = "Mode",
         description = "Unfolding Mode",
@@ -74,12 +75,21 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
         default = False
         ) # type: ignore
 
+    only_move_loops_in_face : bP(
+        name = "Only Move Current Face's Loops",
+        description = "Avoid moving loops of other faces when moving UV loops",
+        default = False
+        ) # type: ignore
+    
+    #endregion
+
     def execute(self, context):
         props = context.scene.sloppy_props
         bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
         uv_layer = bm.loops.layers.uv.verify()
         islands = bmesh_utils.bmesh_linked_uv_islands(bm, uv_layer)
 
+        # region Initial variables
         current_dir_array = []
         max_avg_angle = 0.0
         min_avg_angle = 360.0
@@ -135,8 +145,8 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
             {"name": "nom", "type": "INT", "domain": "FACE", "layer": None},
             {"name": "nom_dir", "type": "INT", "domain": "FACE", "layer": None},
             {"name": "nom_dir_edge", "type": "INT", "domain": "EDGE", "layer": None},
-            {"name": "prev_length_x", "type": "FLOAT", "domain": "FACE", "layer": None},
-            {"name": "prev_length_y", "type": "FLOAT", "domain": "FACE", "layer": None},
+            {"name": "avg_length_x", "type": "FLOAT", "domain": "FACE", "layer": None},
+            {"name": "avg_length_y", "type": "FLOAT", "domain": "FACE", "layer": None},
             ]
         
         for nam in attr_dict:
@@ -179,6 +189,8 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
         ind_face_uv = props.get_dict_layer("ind_face_uv", attr_dict)
         xi = props.get_dict_layer("xi", attr_dict)
         yi = props.get_dict_layer("yi", attr_dict)
+        avg_length_x = props.get_dict_layer("avg_length_x", attr_dict)
+        avg_length_y = props.get_dict_layer("avg_length_y", attr_dict)
 
 
         co_attr_arr = [[co_ur_x, co_ur_y], [co_ul_x, co_ul_y], [co_ll_x, co_ll_y], [co_lr_x, co_lr_y]]
@@ -239,7 +251,9 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                 "Down"
              ],
         ]
+        # endregion
 
+        # region Operator functions
         def check_list_for_duplicate(the_list):
             seen = set()
             for the_item in the_list:
@@ -717,6 +731,7 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
             if add_dir == 3:
                 quad_msg = "\n{0}{8}{4}\n{3}{8}{7}\n{3}{8}{7}\n{3}{8}{7}\n{1}{9}{5}\n{3}{8}{7}\n{3}{8}{7}\n{3}{8}{7}\n{2}{8}{6}\n".format(quad_msg_aa, quad_msg_ab, quad_msg_ac, quad_msg_avsp, quad_msg_ba, quad_msg_bb, quad_msg_bc, quad_msg_bvsp, ohspace, orarrow)
             return quad_msg
+        # endregion
 
         previous_island_length_x = 0.0
         previous_island_length_y = 0.0
@@ -727,7 +742,6 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
             bm.verts.ensure_lookup_table()
             bm.edges.ensure_lookup_table()
             bm.faces.ensure_lookup_table()
-            # edge length maps contents: array(array(axis indices), array(array(face, is virtual, [virtual face]),  ))
             edge_length_map_x = [[],[]]
             edge_length_map_y = [[],[]]
             process_sequence = 0
@@ -742,13 +756,14 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
             i_offset = mathutils.Vector((self.offset_per_island[0] * ii, self.offset_per_island[1] * ii))
             print(f"Island {ii}:")
 
+            # region Find initial face(s)
             for face in island:
                 avg_norm += face.normal
                 avg_angle = 0.0
                 angle_count = 0
                 for fe in face.edges:
                     angle_count += 1
-                    if fe.is_boundary == True or len(face.edges) > 1:
+                    if fe.is_boundary == True or len(face.edges) < 2:
                         avg_angle += 90
                     else:
                         avg_angle += math.degrees(fe.calc_face_angle())
@@ -944,8 +959,9 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
 
             next_round = []
             init_face_corner_verts = []
+            # endregion
 
-            # process initial face (virtual and otherwise)
+            # region Process initial face(s))
             if initial_face_found == True:
                 if init_face_is_virtual == True:
                     vif_verts = []
@@ -976,7 +992,17 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                     init_face[corner_lr] = init_face_corner_verts[0][3].index
                     init_face[xi] = 0
                     init_face[yi] = 0
-            
+
+                avg_edge_length_x = (init_face_dir_arr[0].calc_length() + init_face_dir_arr[2].calc_length()) / 2
+                avg_edge_length_y = (init_face_dir_arr[1].calc_length() + init_face_dir_arr[3].calc_length()) / 2
+                if init_face_is_virtual == True:
+                    for vif in init_virtual_face:
+                        vif[avg_length_x] = avg_edge_length_x
+                        vif[avg_length_y] = avg_edge_length_y
+                if init_face_is_virtual == False:
+                    init_face[avg_length_x] = avg_edge_length_x
+                    init_face[avg_length_y] = avg_edge_length_y
+
                 if self.pre_calc_edge_lengths == False:
                     avg_edge_length_x = (init_face_dir_arr[0].calc_length() + init_face_dir_arr[2].calc_length()) / 4
                     avg_edge_length_y = (init_face_dir_arr[1].calc_length() + init_face_dir_arr[3].calc_length()) / 4
@@ -998,8 +1024,6 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                         if iv not in verts_done:
                             verts_done.append(iv)
                 if self.pre_calc_edge_lengths == True:
-                    avg_edge_length_x = (init_face_dir_arr[0].calc_length() + init_face_dir_arr[2].calc_length()) / 2
-                    avg_edge_length_y = (init_face_dir_arr[1].calc_length() + init_face_dir_arr[3].calc_length()) / 2
                     this_edge_length_map_x_item = [init_face, init_face_is_virtual, init_virtual_face, [init_face_corner_verts[0][1],init_face_corner_verts[0][2]], [init_face_corner_verts[0][0],init_face_corner_verts[0][3]]]
                     this_edge_length_map_y_item = [init_face, init_face_is_virtual, init_virtual_face, [init_face_corner_verts[0][2],init_face_corner_verts[0][3]], [init_face_corner_verts[0][0],init_face_corner_verts[0][1]]]
                     map_x_index = 0
@@ -1121,6 +1145,7 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                                     process_sequence += 1
             if initial_face_found == False:
                 print(f"No usable initial face found for island {ii}.")
+            # endregion
 
             bpy.context.active_object.data.update()
             round = 0
@@ -1128,8 +1153,8 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
             retries = 0
             max_retries = 5
 
+            # region Mesh traversal
             tododo = len(faces_remain)
-            # remaining rounds while-loop
             while tododo > 0:
                 print(f"{len(faces_remain)} remaining faces.")
                 round += 1
@@ -1190,11 +1215,15 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                     
                     if is_virtual_quad == True:
                         for vf in virtual_quad:
+                            vf[avg_length_x] = avg_edge_length_x
+                            vf[avg_length_y] = avg_edge_length_y
                             for vfv in vf.verts:
                                 if vfv not in virtual_verts:
                                     virtual_verts.append(vfv)
                         corners = get_corner_verts(these_edges, virtual_verts)
                     if is_virtual_quad == False:
+                        trf[avg_length_x] = avg_edge_length_x
+                        trf[avg_length_y] = avg_edge_length_y
                         corners = get_corner_verts(these_edges, trf.verts)
                     
                     for ci, corner in enumerate(corners[0]):
@@ -1431,6 +1460,9 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
 
                 bpy.context.active_object.data.update()
             
+            # endregion
+
+            # region Apply pre-calculated lengths
             if self.pre_calc_edge_lengths == True and (len(edge_length_map_x[0]) + len(edge_length_map_y[0])) > 0:
                 sorted_x = edge_length_map_x[1].copy()
                 sorted_x.sort(key=map_sort_by_coord)
@@ -1518,7 +1550,7 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                     previous_island_length_x = self.offset_per_island[0] * last_a_len
                     previous_island_length_y = self.offset_per_island[1] * last_b_len
                 bpy.context.active_object.data.update()
-
+            # endregion
             for face in island:
                 face[process_sequence_max] = process_sequence
         

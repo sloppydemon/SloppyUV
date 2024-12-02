@@ -21,7 +21,7 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
     bvP = bpy.props.BoolVectorProperty
     sP = bpy.props.StringProperty
 
-    # region prop def
+    # region Property list
     unfold_mode : eP(
         name = "Mode",
         description = "Unfolding Mode",
@@ -76,8 +76,8 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
         ) # type: ignore
 
     only_move_loops_in_face : bP(
-        name = "Only Edit Current Loops",
-        description = "Avoid moving loops of other faces than current face when editing UV loops",
+        name = "Only Move Current Face's Loops",
+        description = "Avoid moving loops of other faces when moving UV loops",
         default = False
         ) # type: ignore
     
@@ -88,8 +88,8 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
         bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
         uv_layer = bm.loops.layers.uv.verify()
         islands = bmesh_utils.bmesh_linked_uv_islands(bm, uv_layer)
-        
-        # region init vars
+
+        # region Initial variables
         current_dir_array = []
         max_avg_angle = 0.0
         min_avg_angle = 360.0
@@ -253,7 +253,7 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
         ]
         # endregion
 
-        # region functions
+        # region Operator functions
         def check_list_for_duplicate(the_list):
             seen = set()
             for the_item in the_list:
@@ -754,9 +754,9 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
             init_virtual_face = []
             avg_norm = mathutils.Vector((0,0,0))
             i_offset = mathutils.Vector((self.offset_per_island[0] * ii, self.offset_per_island[1] * ii))
-            if props.verbose: print(f"Island {ii}:")
+            print(f"Island {ii}:")
 
-            # region prep init search
+            # region Find initial face(s)
             for face in island:
                 avg_norm += face.normal
                 avg_angle = 0.0
@@ -785,7 +785,8 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                 current_normal = current_avg_normal
                 quant_arr.sort(key=quant_sort)
                 current_avg_normal = quant_arr[0][0] * -1.0
-                if props.verbose == True: print(f"Average island normals quantized to {quant_arr[0][2]}")
+                if props.verbose == True:
+                    print(f"Average island normals quantized to {quant_arr[0][2]}")
 
             bpy.context.active_object.data.update()
 
@@ -797,9 +798,7 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                 face[island_index] = ii
             
             bpy.context.active_object.data.update()
-            # endregion
 
-            # region find init face(s)
             initial_face_found = False
             
             while initial_face_found == False and len(faces_remain) > 0:
@@ -820,7 +819,7 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                                     init_face = faces_selected[1]
                                     is_selected_face = True
                                 else:
-                                    if props.verbose: print("Too inconsistent mesh! Aborting!")
+                                    print("Too inconsistent mesh! Aborting!")
                                     return  {"CANCELED"}
                             else:
                                 other_tri = get_adjacent_triangle(init_face)
@@ -831,12 +830,11 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                                     is_selected_face = True
                                     init_virtual_face_diagonal = other_tri[1]
                                 else:
-                                    if props.verbose: print("Too inconsistent mesh! Aborting!")
+                                    print("Too inconsistent mesh! Aborting!")
                                     return  {"CANCELED"}
                     else:
                         faces_remain.sort(key=regularity_sort)
                         init_face = faces_remain[0]
-                        init_virtual_face = [init_face]
                         if len(init_face.edges) == 3:
                             other_tri = get_adjacent_triangle(init_face)
                             if other_tri[0] != None:
@@ -849,12 +847,11 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                                 if other_quad != None:
                                     init_face = other_quad
                                 else:
-                                    if props.verbose: print("Too inconsistent mesh! Aborting!")
+                                    print("Too inconsistent mesh! Aborting!")
                                     return  {"CANCELED"}
                 else:
                     faces_remain.sort(key=regularity_sort)
                     init_face = faces_remain[0]
-                    init_virtual_face = [init_face]
                     if len(init_face.edges) == 3:
                         other_tri = get_adjacent_triangle(init_face)
                         if other_tri[0] != None:
@@ -867,7 +864,7 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                             if other_quad != None:
                                 init_face = other_quad
                             else:
-                                if props.verbose: print("Too inconsistent mesh! Aborting!")
+                                print("Too inconsistent mesh! Aborting!")
                                 return  {"CANCELED"}
 
                 current_normal = init_face.normal
@@ -902,19 +899,20 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                     for avife in init_virtual_face[0].edges:
                         if avife != init_virtual_face_diagonal:
                             vif_edges.append(avife)
+                            print(avife.index)
                     for bvife in init_virtual_face[1].edges:
                         if bvife != init_virtual_face_diagonal:
                             vif_edges.append(bvife)
+                            print(bvife.index)
                     current_face_center = calc_edge_center(init_virtual_face_diagonal)
                     init_face_dir_arr = get_init_dir_edges(vif_edges)
                     while check_list_for_duplicate(init_face_dir_arr) == True and current_quant_index < 4:
                         current_quant_index += 1
+                        print(current_quant_index)
                         try:
                             current_dir_array = quant_arr[current_quant_index][1]
                         except:
-                            if props.verbose: print(f"Failed to get directions for virtual face {init_virtual_face[0].index}/{init_virtual_face[1].index}! Marking faces as trailing triangles...")
-                            else:
-                                pass
+                            print(f"Failed to get directions for virtual face {init_virtual_face[0].index}/{init_virtual_face[1].index}! Marking faces as trailing triangles...")
                     
                     if current_quant_index > 3:
                         init_face[process_sequence_attr] = process_sequence
@@ -961,58 +959,70 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
 
             next_round = []
             init_face_corner_verts = []
-            init_virtual_loops = []
             # endregion
 
-            # region proc init face(s)
+            # region Process initial face(s))
             if initial_face_found == True:
-                vif_verts = []
-                for vif in init_virtual_face:
-                    vif[xi] = 0
-                    vif[yi] = 0
-                    if vif in faces_remain:
-                        faces_remain.remove(vif)
-                    for vifv in vif.verts:
-                        if vifv not in vif_verts:
-                            vif_verts.append(vifv)
-                    for vifl in vif.loops:
-                        if vifl not in init_virtual_loops:
-                            init_virtual_loops.append(vifl)
-                init_face_corner_verts = get_corner_verts(init_face_dir_arr, vif_verts)
-                for vif in init_virtual_face:
-                    vif[corner_ur] = init_face_corner_verts[0][0].index
-                    vif[corner_ul] = init_face_corner_verts[0][1].index
-                    vif[corner_ll] = init_face_corner_verts[0][2].index
-                    vif[corner_lr] = init_face_corner_verts[0][3].index
-                    vif[xi] = 0
-                    vif[yi] = 0
+                if init_face_is_virtual == True:
+                    vif_verts = []
+                    for vif in init_virtual_face:
+                        vif[xi] = 0
+                        vif[yi] = 0
+                        if vif in faces_remain:
+                            faces_remain.remove(vif)
+                        for vifv in vif.verts:
+                            if vifv not in vif_verts:
+                                vif_verts.append(vifv)
+                    init_face_corner_verts = get_corner_verts(init_face_dir_arr, vif_verts)
+                    print(init_virtual_face_diagonal.index)
+                    print([i.index for i in init_face_dir_arr])
+                    print([v.index for v in init_face_corner_verts[0] if v != None])
+                    for vif in init_virtual_face:
+                        vif[corner_ur] = init_face_corner_verts[0][0].index
+                        vif[corner_ul] = init_face_corner_verts[0][1].index
+                        vif[corner_ll] = init_face_corner_verts[0][2].index
+                        vif[corner_lr] = init_face_corner_verts[0][3].index
+                else:
+                    if init_face in faces_remain:
+                        faces_remain.remove(init_face)
+                    init_face_corner_verts = get_corner_verts(init_face_dir_arr, init_face.verts)
+                    init_face[corner_ur] = init_face_corner_verts[0][0].index
+                    init_face[corner_ul] = init_face_corner_verts[0][1].index
+                    init_face[corner_ll] = init_face_corner_verts[0][2].index
+                    init_face[corner_lr] = init_face_corner_verts[0][3].index
+                    init_face[xi] = 0
+                    init_face[yi] = 0
 
                 avg_edge_length_x = (init_face_dir_arr[0].calc_length() + init_face_dir_arr[2].calc_length()) / 2
                 avg_edge_length_y = (init_face_dir_arr[1].calc_length() + init_face_dir_arr[3].calc_length()) / 2
-                for vif in init_virtual_face:
-                    vif[avg_length_x] = avg_edge_length_x
-                    vif[avg_length_y] = avg_edge_length_y
-                
-                # region init uv edit
+                if init_face_is_virtual == True:
+                    for vif in init_virtual_face:
+                        vif[avg_length_x] = avg_edge_length_x
+                        vif[avg_length_y] = avg_edge_length_y
+                if init_face_is_virtual == False:
+                    init_face[avg_length_x] = avg_edge_length_x
+                    init_face[avg_length_y] = avg_edge_length_y
+
                 if self.pre_calc_edge_lengths == False:
                     avg_edge_length_x = (init_face_dir_arr[0].calc_length() + init_face_dir_arr[2].calc_length()) / 4
                     avg_edge_length_y = (init_face_dir_arr[1].calc_length() + init_face_dir_arr[3].calc_length()) / 4
                     
                     init_face_corner_vert_cos = [mathutils.Vector((-avg_edge_length_x, avg_edge_length_y)) + i_offset, mathutils.Vector((-avg_edge_length_x, -avg_edge_length_y)) + i_offset, mathutils.Vector((avg_edge_length_x, -avg_edge_length_y)) + i_offset, mathutils.Vector((avg_edge_length_x, avg_edge_length_y)) + i_offset]
                     for ifvco, ifva in zip(init_face_corner_vert_cos, co_attr_arr):
-                        for vif in init_virtual_face:
-                            vif[ifva[0]] = ifvco.x
-                            vif[ifva[1]] = ifvco.y
-                    for iv, ivco in zip(init_face_corner_verts[0], init_face_corner_vert_cos):
+                        init_face[ifva[0]] = ifvco.x
+                        init_face[ifva[1]] = ifvco.y
+                        if init_face_is_virtual == True:
+                            for vif in init_virtual_face:
+                                vif[ifva[0]] = ifvco.x
+                                vif[ifva[1]] = ifvco.y
+
+                    for iv, ivi, ivco in zip(init_face_corner_verts[0], init_face_corner_verts[1], init_face_corner_vert_cos):
                         for ivl in iv.link_loops:
                             if ivl.index in island_loops:
                                 ivl[uv_layer].uv = ivco
                                 ivl[uv_layer].pin_uv = True
                         if iv not in verts_done:
                             verts_done.append(iv)
-                # endregion
-                
-                # region init pre-calc
                 if self.pre_calc_edge_lengths == True:
                     this_edge_length_map_x_item = [init_face, init_face_is_virtual, init_virtual_face, [init_face_corner_verts[0][1],init_face_corner_verts[0][2]], [init_face_corner_verts[0][0],init_face_corner_verts[0][3]]]
                     this_edge_length_map_y_item = [init_face, init_face_is_virtual, init_virtual_face, [init_face_corner_verts[0][2],init_face_corner_verts[0][3]], [init_face_corner_verts[0][0],init_face_corner_verts[0][1]]]
@@ -1037,44 +1047,51 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                     edge_length_map_y[1][map_y_index][1].append(this_edge_length_map_y_item)
                     edge_length_map_y[1][map_y_index][2] += avg_edge_length_y
                     edge_length_map_y[1][map_y_index][3] += 1
-                # endregion
                 
-                # region init ind uv attr
                 for ci, corner in enumerate(init_face_corner_verts[0]):
                     for corner_loop in corner.link_loops:
-                        if corner_loop in init_virtual_loops:
-                            corner_loop[loop_corner_index] = ci
-                            if ci == 0:
-                                corner_loop[ind_face_uv][0] = 1.0
-                                corner_loop[ind_face_uv][1] = 1.0
-                            if ci == 1:
-                                corner_loop[ind_face_uv][0] = 0.0
-                                corner_loop[ind_face_uv][1] = 1.0
-                            if ci == 2:
-                                corner_loop[ind_face_uv][0] = 0.0
-                                corner_loop[ind_face_uv][1] = 0.0
-                            if ci == 3:
-                                corner_loop[ind_face_uv][0] = 1.0
-                                corner_loop[ind_face_uv][1] = 0.0
-                # endregion
+                        if init_face_is_virtual == True:
+                            if corner_loop in init_virtual_face[0].loops or corner_loop in init_virtual_face[1].loops:
+                                corner_loop[loop_corner_index] = ci
+                                if ci == 0:
+                                    corner_loop[ind_face_uv][0] = 1.0
+                                    corner_loop[ind_face_uv][1] = 1.0
+                                if ci == 1:
+                                    corner_loop[ind_face_uv][0] = 0.0
+                                    corner_loop[ind_face_uv][1] = 1.0
+                                if ci == 2:
+                                    corner_loop[ind_face_uv][0] = 0.0
+                                    corner_loop[ind_face_uv][1] = 0.0
+                                if ci == 3:
+                                    corner_loop[ind_face_uv][0] = 1.0
+                                    corner_loop[ind_face_uv][1] = 0.0
+                        if init_face_is_virtual == False:
+                            if corner_loop in init_face.loops:
+                                corner_loop[loop_corner_index] = ci
+                                if ci == 0:
+                                    corner_loop[ind_face_uv][0] = 1.0
+                                    corner_loop[ind_face_uv][1] = 1.0
+                                if ci == 1:
+                                    corner_loop[ind_face_uv][0] = 0.0
+                                    corner_loop[ind_face_uv][1] = 1.0
+                                if ci == 2:
+                                    corner_loop[ind_face_uv][0] = 0.0
+                                    corner_loop[ind_face_uv][1] = 0.0
+                                if ci == 3:
+                                    corner_loop[ind_face_uv][0] = 1.0
+                                    corner_loop[ind_face_uv][1] = 0.0
                 
-                # region init face info
                 init_face_winding = check_winding(init_face, init_face_corner_verts)
-                if props.verbose == True:
-                    if init_face_is_virtual == False:
-                        print(f"Processing initial face of island {ii}: {init_face.index}. Not virtual.")
-                    if init_face_is_virtual == True:
-                        print(f"Processing initial face of island {ii}: {init_virtual_face[0].index}/{init_virtual_face[1].index}. Virtual quad.")
-                    try:
-                        print(viz_quad(init_face_dir_arr, init_face_corner_verts[0], init_face, init_virtual_face, init_face_is_virtual, init_face_winding))
-                    except:
-                        print(f"Failed to visualize initial face(s)! Operation will probably fail...")
-                # endregion
+                if init_face_is_virtual == False:
+                    print(f"Processing initial face of island {ii}: {init_face.index}. Not virtual.")
+                if init_face_is_virtual == True:
+                    print(f"Processing initial face of island {ii}: {init_virtual_face[0].index}/{init_virtual_face[1].index}. Virtual quad.")
+                print(viz_quad(init_face_dir_arr, init_face_corner_verts[0], init_face, init_virtual_face, init_face_is_virtual, init_face_winding))
 
                 if init_face not in faces_done:
                     faces_done.append(init_face)
 
-                # region fill round 0
+                # region Populate first round 
                 for di, ife in enumerate(init_face_dir_arr):
                     dirs_to_do = [0,1,2,3]
                     if self.unfold_mode == "B":
@@ -1100,9 +1117,8 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                                             other_verts.append(otv)
                                 ifef[nom_dir] = di
                                 ifef[nom] = adj_face.index
-
                                 if ifef[trailing_tri] == 1:
-                                    if props.verbose: print(f"Initial face of island {ii}: skipped face index {ifef.index} in direction {di} because it is a trailing triangle.")
+                                    print(f"Initial face of island {ii}: skipped face index {ifef.index} in direction {di} because it is a trailing triangle.")
                                     ifef[process_sequence_attr] = process_sequence
                                     ife[process_sequence_edge] = process_sequence
                                     ife[nom_dir_edge] = di
@@ -1113,24 +1129,13 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                                     ifef.select = True
                                 if ifef[trailing_tri] == 0:
                                     other_corner_verts = get_corner_verts(other_dir_edges, other_verts)
-                                    skip_append = False
-
-                                    if props.verbose:
-                                        print(f"Initial face of island {ii}: Added face index {ifef.index} in direction {di} to next round. Virtual face: {init_face_is_virtual}.")
-                                        try:
-                                            print(viz_add_quad(init_face_dir_arr, other_dir_edges, init_face_corner_verts[0], other_corner_verts[0], init_face, ifef, init_virtual_face, other_virtual_face, init_face_is_virtual, is_other_face_virtual, di))
-                                        except:
-                                            print(f"Face index {ifef.index} failed to generate valid corners! Face skipped.")
-                                            skip_append = True
+                                    print(f"Initial face of island {ii}: Added face index {ifef.index} in direction {di} to next round. Virtual face: {init_face_is_virtual}.")
                                     
-                                    if skip_append == True:
-                                        ifef[trailing_tri] = 1
-                                        if ifef in faces_remain:
-                                            faces_remain.remove(ifef)
-                                        if ifef not in faces_done:
-                                            faces_done.append(ifef)
-                                    if skip_append == False:
-                                        next_round.append(ifef)
+                                    try:
+                                        print(viz_add_quad(init_face_dir_arr, other_dir_edges, init_face_corner_verts[0], other_corner_verts[0], init_face, ifef, init_virtual_face, other_virtual_face, init_face_is_virtual, is_other_face_virtual, di))
+                                    except:
+                                        print(f"")
+                                    next_round.append(ifef)
                                     ifef[process_sequence_attr] = process_sequence
                                     if di == 1 or di == 3:
                                         if di == 1: ifef[xi] = init_face[xi] - 1
@@ -1144,21 +1149,21 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                                     ife[nom_dir_edge] = di
                                     process_sequence += 1
                 # endregion
-
-            if props.verbose:
-                if initial_face_found == False:
-                    if props.verbose: print(f"No usable initial face found for island {ii}.")
+            
+            if initial_face_found == False:
+                print(f"No usable initial face found for island {ii}.")
             # endregion
 
             bpy.context.active_object.data.update()
             round = 0
             do_a = True
             retries = 0
+            max_retries = 5
 
-            # region traverse mesh
+            # region Mesh traversal
             tododo = len(faces_remain)
             while tododo > 0:
-                if props.verbose: print(f"{len(faces_remain)} remaining faces.")
+                print(f"{len(faces_remain)} remaining faces.")
                 round += 1
                 this_round = next_round.copy()
                 next_round = []
@@ -1169,23 +1174,23 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                         face.select = True
                         for loop in face.loops:
                             loop[uv_layer].pin_uv = False
-                        if props.verbose: print(f"Removed face {face.index} from remaining faces because it is a trailing triangle.")
+                        print(f"Removed face {face.index} from remaining faces because it is a trailing triangle.")
                 for ttf in this_round:
                     if ttf[trailing_tri] == 1:
                         this_round.remove(ttf)
                         ttf.select = True
                         for ttfl in ttf.loops:
                             ttfl[uv_layer].pin_uv = False
-                        if props.verbose: print(f"Removed face {ttf.index} from round because it is a trailing triangle.")
+                        print(f"Removed face {ttf.index} from round because it is a trailing triangle.")
+
+                
 
                 for trf in this_round:
-                    # region proc t face
-                    if props.verbose: print(f"Island {ii} - Round {round}: Processing face {trf.index} with direction {trf[nom_dir]}.")
+                    print(f"Island {ii} - Round {round}: Processing face {trf.index} with direction {trf[nom_dir]}.")
                     these_edges = [bm.edges[trf[edge_u]], bm.edges[trf[edge_l]], bm.edges[trf[edge_d]], bm.edges[trf[edge_r]]]
                     is_virtual_quad = False
-                    virtual_quad = [trf, None]
+                    virtual_quad = [None, None]
                     virtual_verts = []
-                    virtual_loops = []
                     corners = []
                     cos = [None, None, None, None]
                     nom_cos = [
@@ -1211,45 +1216,62 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                         if trof in faces_remain:
                             faces_remain.remove(trof)
 
-                    
+
                     avg_edge_length_x = (these_edges[0].calc_length() + these_edges[2].calc_length()) / 2
                     avg_edge_length_y = (these_edges[1].calc_length() + these_edges[3].calc_length()) / 2
                     
-                    for vf in virtual_quad:
-                        if vf != None:
+                    if is_virtual_quad == True:
+                        for vf in virtual_quad:
                             vf[avg_length_x] = avg_edge_length_x
                             vf[avg_length_y] = avg_edge_length_y
                             for vfv in vf.verts:
                                 if vfv not in virtual_verts:
                                     virtual_verts.append(vfv)
-                            corners = get_corner_verts(these_edges, virtual_verts)
-                            for vfl in vf.loops:
-                                if vfl not in virtual_loops:
-                                    virtual_loops.append(vfl)
+                        corners = get_corner_verts(these_edges, virtual_verts)
+                    if is_virtual_quad == False:
+                        trf[avg_length_x] = avg_edge_length_x
+                        trf[avg_length_y] = avg_edge_length_y
+                        corners = get_corner_verts(these_edges, trf.verts)
                     
                     for ci, corner in enumerate(corners[0]):
                         for corner_loop in corner.link_loops:
-                            if corner_loop in virtual_loops:
-                                corner_loop[loop_corner_index] = ci
-                                if ci == 0:
-                                    corner_loop[ind_face_uv][0] = 1.0
-                                    corner_loop[ind_face_uv][1] = 1.0
-                                if ci == 1:
-                                    corner_loop[ind_face_uv][0] = 0.0
-                                    corner_loop[ind_face_uv][1] = 1.0
-                                if ci == 2:
-                                    corner_loop[ind_face_uv][0] = 0.0
-                                    corner_loop[ind_face_uv][1] = 0.0
-                                if ci == 3:
-                                    corner_loop[ind_face_uv][0] = 1.0
-                                    corner_loop[ind_face_uv][1] = 0.0
+                            if is_virtual_quad == True:
+                                if corner_loop in virtual_quad[0].loops or corner_loop in virtual_quad[1].loops:
+                                    corner_loop[loop_corner_index] = ci
+                                    if ci == 0:
+                                        corner_loop[ind_face_uv][0] = 1.0
+                                        corner_loop[ind_face_uv][1] = 1.0
+                                    if ci == 1:
+                                        corner_loop[ind_face_uv][0] = 0.0
+                                        corner_loop[ind_face_uv][1] = 1.0
+                                    if ci == 2:
+                                        corner_loop[ind_face_uv][0] = 0.0
+                                        corner_loop[ind_face_uv][1] = 0.0
+                                    if ci == 3:
+                                        corner_loop[ind_face_uv][0] = 1.0
+                                        corner_loop[ind_face_uv][1] = 0.0
+                            if is_virtual_quad == False:
+                                if corner_loop in trf.loops:
+                                    corner_loop[loop_corner_index] = ci
+                                    if ci == 0:
+                                        corner_loop[ind_face_uv][0] = 1.0
+                                        corner_loop[ind_face_uv][1] = 1.0
+                                    if ci == 1:
+                                        corner_loop[ind_face_uv][0] = 0.0
+                                        corner_loop[ind_face_uv][1] = 1.0
+                                    if ci == 2:
+                                        corner_loop[ind_face_uv][0] = 0.0
+                                        corner_loop[ind_face_uv][1] = 0.0
+                                    if ci == 3:
+                                        corner_loop[ind_face_uv][0] = 1.0
+                                        corner_loop[ind_face_uv][1] = 0.0
                     
-                    if props.verbose:
-                        if is_virtual_quad == False:
-                            wnd = check_winding(trf, corners)
-                            print(viz_quad(these_edges, corners[0], trf, virtual_quad, is_virtual_quad, wnd))
-                        else:
-                            print(viz_quad(these_edges, corners[0], trf, virtual_quad, is_virtual_quad, ""))
+                    
+                    if is_virtual_quad == False:
+                        wnd = check_winding(trf, corners)
+                        print(viz_quad(these_edges, corners[0], trf, virtual_quad, is_virtual_quad, wnd))
+                    else:
+                        print(viz_quad(these_edges, corners[0], trf, virtual_quad, is_virtual_quad, ""))
 
                     if trf[nom_dir] == 0:
                         cos[0] = nom_cos[0] + mathutils.Vector((0,avg_edge_length_y))
@@ -1271,24 +1293,23 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                         cos[1] = nom_cos[0]
                         cos[2] = nom_cos[3]
                         cos[3] = nom_cos[3] + mathutils.Vector((avg_edge_length_x,0))
-                    # endregion
-
-                    # region t uv edit
                     if self.pre_calc_edge_lengths == False:
                         for cornerv, vi in zip(corners[0], corners[1]):
+                            # if cornerv not in verts_done:
                             for vil in cornerv.link_loops:
                                 if vil.index in island_loops:
                                     vil[uv_layer].uv = cos[vi]
                                     vil[uv_layer].pin_uv = True
                             if cornerv not in verts_done:
                                 verts_done.append(cornerv)
+                    if self.pre_calc_edge_lengths == True:
                         for trfvco, trfva in zip(cos, co_attr_arr):
-                            for vif in virtual_quad:
-                                vif[trfva[0]] = trfvco.x
-                                vif[trfva[1]] = trfvco.y
-                    # endregion
-                    
-                    # region t pre-calc prep
+                            trf[trfva[0]] = trfvco.x
+                            trf[trfva[1]] = trfvco.y
+                            if is_virtual_quad == True:
+                                for vif in virtual_quad:
+                                    vif[trfva[0]] = trfvco.x
+                                    vif[trfva[1]] = trfvco.y
                     if self.pre_calc_edge_lengths == True:
                         this_edge_length_map_x_item = [trf, is_virtual_quad, virtual_quad, [corners[0][1],corners[0][2]], [corners[0][0],corners[0][3]]]
                         this_edge_length_map_y_item = [trf, is_virtual_quad, virtual_quad, [corners[0][2],corners[0][3]], [corners[0][0],corners[0][1]]]
@@ -1313,9 +1334,7 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                         edge_length_map_y[1][map_y_index][1].append(this_edge_length_map_y_item)
                         edge_length_map_y[1][map_y_index][2] += avg_edge_length_y
                         edge_length_map_y[1][map_y_index][3] += 1
-                    # endregion
                     
-                    # region fill next round
                     if self.unfold_mode == "A":
                         dirs_to_do =  [0,1,2,3]
                         for di, ife in enumerate(these_edges):
@@ -1341,7 +1360,7 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                                                     if ovfv not in other_verts:
                                                         other_verts.append(ovfv)
                                         if ifef[trailing_tri] == 1:
-                                            if props.verbose: print(f"Round {round}: Skipped face index {ifef.index} in direction {di} because it is a trailing triangle.")
+                                            print(f"Round {round}: Skipped face index {ifef.index} in direction {di} because it is a trailing triangle.")
                                             ifef[process_sequence_attr] = process_sequence
                                             ife[process_sequence_edge] = process_sequence
                                             ife[nom_dir_edge] = di
@@ -1351,25 +1370,10 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                                             for ifefl in ifef.loops:
                                                 ifefl[uv_layer].pin_uv = False
                                         if ifef[trailing_tri] == 0:
-                                            skip_append = False
-                                            try:
-                                                other_corner_verts = get_corner_verts(other_dir_arr, other_verts)
-                                            except:
-                                                skip_append = True
-                                            if props.verbose:
-                                                print(f"Round {round}: Added face index {ifef.index} in direction {di} to next round of island {ii}. Virtual face: {other_face_is_virtual}. Current process sequence index: {process_sequence}")
-                                                try:
-                                                    print(viz_add_quad(these_edges, other_dir_arr, corners[0], other_corner_verts[0], adj_face, ifef, virtual_quad, other_virtual_face, is_virtual_quad, other_face_is_virtual, di))
-                                                except:
-                                                    print(f"Failed to calculate corners for face {ifef.index}! Operation will probably fail...")
-                                            if skip_append == True:
-                                                ifef[trailing_tri] = 1
-                                                if ifef in faces_remain:
-                                                    faces_remain.remove(ifef)
-                                                if ifef not in faces_done:
-                                                    faces_done.append(ifef)
-                                            if skip_append == False:
-                                                next_round.append(ifef)
+                                            other_corner_verts = get_corner_verts(other_dir_arr, other_verts)
+                                            print(f"Round {round}: Added face index {ifef.index} in direction {di} to next round of island {ii}. Virtual face: {other_face_is_virtual}. Current process sequence index: {process_sequence}")
+                                            print(viz_add_quad(these_edges, other_dir_arr, corners[0], other_corner_verts[0], adj_face, ifef, virtual_quad, other_virtual_face, is_virtual_quad, other_face_is_virtual, di))
+                                            next_round.append(ifef)
                                             ifef[process_sequence_attr] = process_sequence
                                             ife[process_sequence_edge] = process_sequence
                                             ife[nom_dir_edge] = di
@@ -1418,7 +1422,7 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                                                     if ovfv not in other_verts:
                                                         other_verts.append(ovfv)
                                         if ifef[trailing_tri] == 1:
-                                            if props.verbose: print(f"Round {round}: Skipped face index {ifef.index} in direction {di} because it is a trailing triangle.")
+                                            print(f"Round {round}: Skipped face index {ifef.index} in direction {di} because it is a trailing triangle.")
                                             ifef[process_sequence_attr] = process_sequence
                                             ife[process_sequence_edge] = process_sequence
                                             ife[nom_dir_edge] = di
@@ -1428,25 +1432,10 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                                             for ifefl in ifef.loops:
                                                 ifefl[uv_layer].pin_uv = False
                                         if ifef[trailing_tri] == 0:
-                                            skip_append = False
-                                            try:
-                                                other_corner_verts = get_corner_verts(other_dir_arr, other_verts)
-                                            except:
-                                                skip_append = True
-                                            if props.verbose:
-                                                print(f"Round {round}: Added face index {ifef.index} in direction {di} to next round of island {ii}. Virtual face: {other_face_is_virtual}. Current process sequence index: {process_sequence}")
-                                                try:
-                                                    print(viz_add_quad(these_edges, other_dir_arr, corners[0], other_corner_verts[0], adj_face, ifef, virtual_quad, other_virtual_face, is_virtual_quad, other_face_is_virtual, di))
-                                                except:
-                                                    print(f"Failed to calculate corners for face {ifef.index}! Operation will probably fail...")
-                                            if skip_append == True:
-                                                ifef[trailing_tri] = 1
-                                                if ifef in faces_remain:
-                                                    faces_remain.remove(ifef)
-                                                if ifef not in faces_done:
-                                                    faces_done.append(ifef)
-                                            if skip_append == False:
-                                                next_round.append(ifef)
+                                            other_corner_verts = get_corner_verts(other_dir_arr, other_verts)
+                                            print(f"Round {round}: Added face index {ifef.index} in direction {di} to next round of island {ii}. Virtual face: {other_face_is_virtual}. Current process sequence index: {process_sequence}")
+                                            print(viz_add_quad(these_edges, other_dir_arr, corners[0], other_corner_verts[0], adj_face, ifef, virtual_quad, other_virtual_face, is_virtual_quad, other_face_is_virtual, di))
+                                            next_round.append(ifef)
                                             ifef[process_sequence_attr] = process_sequence
                                             ife[process_sequence_edge] = process_sequence
                                             ife[nom_dir_edge] = di
@@ -1459,16 +1448,15 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                                                 if di == 0: ifef[yi] = adj_face[yi] + 1
                                                 if di == 2: ifef[yi] = adj_face[yi] - 1
                                             process_sequence += 1
-                    # endregion
                 
                 if len(next_round) == 0:
                     if self.unfold_mode == "B" or self.unfold_mode == "C":
                         if do_a == True:
                             do_a = False
-                            if props.verbose: print("No more in main axis, trying secondary axis")
+                            print("No more in main axis, trying secondary axis")
                         elif do_a == False:
                             do_a = True
-                            if props.verbose: print("No more in secondary axis, returning to main axis")
+                            print("No more in secondary axis, returning to main axis")
                         next_round = faces_done.copy()
                     else:
                         if len(faces_remain) > 0:
@@ -1481,7 +1469,7 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
             
             # endregion
 
-            # region apply pre-calc
+            # region Apply pre-calculated lengths
             if self.pre_calc_edge_lengths == True and (len(edge_length_map_x[0]) + len(edge_length_map_y[0])) > 0:
                 sorted_x = edge_length_map_x[1].copy()
                 sorted_x.sort(key=map_sort_by_coord)
@@ -1511,37 +1499,29 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                 if self.unfold_mode == "C":
                     a_name = "row"
                     b_name = "column"
-                
-                if props.verbose: print(f"Island {ii} has {len(list_a)} {a_name}s and {len(list_b)} {b_name}s ")
+
+                print(f"Island {ii} has {len(list_a)} {a_name}s and {len(list_b)} {b_name}s ")
 
                 for list_a_item in list_a:
                     a_len = list_a_item[2]/list_a_item[3]
                     old_a_len = 0.0 + last_a_len
                     new_a_len = 0.0 + last_a_len + a_len
-                    if props.verbose: print(f"Average edge length for {a_name} {list_a_item[0]}: {a_len}\nTotal previous length: {last_a_len}")
+                    print(f"Average edge length for {a_name} {list_a_item[0]}: {a_len}\nTotal previous length: {last_a_len}")
                     for face_data in list_a_item[1]:
                         for alc in face_data[3]:
                             for alcl in alc.link_loops:
                                 if alcl.index in island_loops:
-                                    should_edit = True
-                                    if self.only_move_loops_in_face == True:
-                                        should_edit = alcl in virtual_loops
-                                    if should_edit == True:
-                                        if self.unfold_mode == "C":
-                                            alcl[uv_layer].uv.y = old_a_len
-                                        else:
-                                            alcl[uv_layer].uv.x = old_a_len
+                                    if self.unfold_mode == "C":
+                                        alcl[uv_layer].uv.y = old_a_len
+                                    else:
+                                        alcl[uv_layer].uv.x = old_a_len
                         for amc in face_data[4]:
                             for amcl in amc.link_loops:
                                 if amcl.index in island_loops:
-                                    should_edit = True
-                                    if self.only_move_loops_in_face == True:
-                                        should_edit = amcl in virtual_loops
-                                    if should_edit == True:
-                                        if self.unfold_mode == "C":
-                                            amcl[uv_layer].uv.y = new_a_len
-                                        else:
-                                            amcl[uv_layer].uv.x = new_a_len
+                                    if self.unfold_mode == "C":
+                                        amcl[uv_layer].uv.y = new_a_len
+                                    else:
+                                        amcl[uv_layer].uv.x = new_a_len
                     last_a_len += a_len
                 
                 bpy.context.active_object.data.update()
@@ -1550,32 +1530,24 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                     b_len = list_b_item[2]/list_b_item[3]
                     old_b_len = 0.0 + last_b_len
                     new_b_len = 0.0 + last_b_len + b_len
-                    if props.verbose: print(f"Average edge length for {b_name} {list_b_item[0]}: {b_len}\nTotal previous length: {last_b_len}")
+                    print(f"Average edge length for {b_name} {list_b_item[0]}: {b_len}\nTotal previous length: {last_b_len}")
                     for face_data in list_b_item[1]:
                         for blc in face_data[3]:
                             for blcl in blc.link_loops:
                                 if blcl.index in island_loops:
-                                    should_edit = True
-                                    if self.only_move_loops_in_face == True:
-                                        should_edit = amcl in virtual_loops
-                                    if should_edit == True:
-                                        if self.unfold_mode == "C":
-                                            blcl[uv_layer].uv.x = old_b_len
-                                        else:
-                                            blcl[uv_layer].uv.y = old_b_len
-                                        blcl[uv_layer].pin_uv = True
+                                    if self.unfold_mode == "C":
+                                        blcl[uv_layer].uv.x = old_b_len
+                                    else:
+                                        blcl[uv_layer].uv.y = old_b_len
+                                    blcl[uv_layer].pin_uv = True
                         for bmc in face_data[4]:
                             for bmcl in bmc.link_loops:
                                 if bmcl.index in island_loops:
-                                    should_edit = True
-                                    if self.only_move_loops_in_face == True:
-                                        should_edit = amcl in virtual_loops
-                                    if should_edit == True:
-                                        if self.unfold_mode == "C":
-                                            bmcl[uv_layer].uv.x = new_b_len
-                                        else:
-                                            bmcl[uv_layer].uv.y = new_b_len
-                                        bmcl[uv_layer].pin_uv = True
+                                    if self.unfold_mode == "C":
+                                        bmcl[uv_layer].uv.x = new_b_len
+                                    else:
+                                        bmcl[uv_layer].uv.y = new_b_len
+                                    bmcl[uv_layer].pin_uv = True
                     last_b_len += b_len
                 
                 if self.unfold_mode == "C":
@@ -1586,7 +1558,6 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                     previous_island_length_y = self.offset_per_island[1] * last_b_len
                 bpy.context.active_object.data.update()
             # endregion
-
             for face in island:
                 face[process_sequence_max] = process_sequence
         

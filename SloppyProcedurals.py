@@ -813,11 +813,12 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                             if len(faces_selected) > 1:
                                 if len(faces_selected[1]) == 3:
                                     init_face_is_virtual = True
-                                    init_virtual_face.append(init_face)
+                                    init_virtual_face = [init_face]
                                     init_virtual_face.append(faces_selected[1])
                                     is_selected_face = True
                                 elif len(faces_selected[1]) == 4:
                                     init_face = faces_selected[1]
+                                    init_virtual_face = [faces_selected[1]]
                                     is_selected_face = True
                                 else:
                                     if props.verbose: print("Too inconsistent mesh! Aborting!")
@@ -826,7 +827,7 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                                 other_tri = get_adjacent_triangle(init_face)
                                 if other_tri[0] != None:
                                     init_face_is_virtual = True
-                                    init_virtual_face.append(init_face)
+                                    init_virtual_face = [init_face]
                                     init_virtual_face.append(other_tri[0])
                                     is_selected_face = True
                                     init_virtual_face_diagonal = other_tri[1]
@@ -841,13 +842,14 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                             other_tri = get_adjacent_triangle(init_face)
                             if other_tri[0] != None:
                                 init_face_is_virtual = True
-                                init_virtual_face.append(init_face)
+                                init_virtual_face = [init_face]
                                 init_virtual_face.append(other_tri[0])
                                 init_virtual_face_diagonal = other_tri[1]
                             else:
                                 other_quad = get_any_adjacent_quad(init_face)
                                 if other_quad != None:
                                     init_face = other_quad
+                                    init_virtual_face = [other_quad]
                                 else:
                                     if props.verbose: print("Too inconsistent mesh! Aborting!")
                                     return  {"CANCELED"}
@@ -859,13 +861,14 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                         other_tri = get_adjacent_triangle(init_face)
                         if other_tri[0] != None:
                             init_face_is_virtual = True
-                            init_virtual_face.append(init_face)
+                            init_virtual_face = [init_face]
                             init_virtual_face.append(other_tri[0])
                             init_virtual_face_diagonal = other_tri[1]
                         else:
                             other_quad = get_any_adjacent_quad(init_face)
                             if other_quad != None:
                                 init_face = other_quad
+                                init_virtual_face = [init_face]
                             else:
                                 if props.verbose: print("Too inconsistent mesh! Aborting!")
                                 return  {"CANCELED"}
@@ -934,16 +937,37 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                             vif[trailing_tri] = 1
                             vif.select = True
                             vif[virtual_quad_attr] = 0
+                        init_virtual_face = []
                     
                     if current_quant_index <= 3:
-                        for vf in init_virtual_face:
+                        vif_verts = []
+                        for vif in init_virtual_face:
+                            for vifv in vif.verts:
+                                if vifv not in vif_verts:
+                                    vif_verts.append(vifv)
                             vif[edge_u] = init_face_dir_arr[0].index
                             vif[edge_l] = init_face_dir_arr[1].index
                             vif[edge_d] = init_face_dir_arr[2].index
                             vif[edge_r] = init_face_dir_arr[3].index
                             vif[process_sequence_attr] = process_sequence
+                        these_corner_verts = get_corner_verts(init_face_dir_arr, vif_verts)
                         initial_face_found = True
+                        for tcv in these_corner_verts[0]:
+                            if tcv == None:
+                                initial_face_found = False
+                                if props.verbose == True: print(f"Failed to calculate corners for virtual face {init_virtual_face[0].index}/{init_virtual_face[1].index}. Will pick another initial face.")
+                        if initial_face_found == False:
+                            for vif in init_virtual_face:
+                                if vif in faces_remain:
+                                    faces_remain.remove(vif)
+                                if vif not in faces_done:
+                                    faces_done.append(vif)
+                                vif[trailing_tri] = 1
+                                vif.select = True
+                                vif[virtual_quad_attr] = 0
+                            init_virtual_face = []
                 else:
+                    if_verts = [ifv for ifv in init_face.verts]
                     init_face.select = True
                     ife_edges = []
                     for ife in init_face.edges:
@@ -955,7 +979,20 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                     init_face[edge_d] = init_face_dir_arr[2].index
                     init_face[edge_r] = init_face_dir_arr[3].index
                     init_face[process_sequence_attr] = process_sequence
+                    these_corner_verts = get_corner_verts(init_face_dir_arr, if_verts)
                     initial_face_found = True
+                    for tcv in these_corner_verts[0]:
+                        if tcv == None:
+                            initial_face_found = False
+                    if initial_face_found == False:
+                        if init_face in faces_remain:
+                            faces_remain.remove(init_face)
+                        if init_face not in faces_done:
+                            faces_done.append(init_face)
+                        init_face[trailing_tri] = 1
+                        init_face.select = True
+                        init_face[virtual_quad_attr] = 0
+                        init_virtual_face = []
             
             bpy.context.active_object.data.update()
 
@@ -979,11 +1016,20 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                         if vifl not in init_virtual_loops:
                             init_virtual_loops.append(vifl)
                 init_face_corner_verts = get_corner_verts(init_face_dir_arr, vif_verts)
+                print(f"There are {len(init_virtual_face)} faces in the initial virtual face.")
+                for ivf in init_virtual_face:
+                    print(ivf.index)
                 for vif in init_virtual_face:
-                    vif[corner_ur] = init_face_corner_verts[0][0].index
-                    vif[corner_ul] = init_face_corner_verts[0][1].index
-                    vif[corner_ll] = init_face_corner_verts[0][2].index
-                    vif[corner_lr] = init_face_corner_verts[0][3].index
+                    try:
+                        vif[corner_ur] = init_face_corner_verts[0][0].index
+                        vif[corner_ul] = init_face_corner_verts[0][1].index
+                        vif[corner_ll] = init_face_corner_verts[0][2].index
+                        vif[corner_lr] = init_face_corner_verts[0][3].index
+                    except:
+                        if props.verbose == True: print(f"Failed to calculate corner vertices for face {vif.index}. This should not happen...")
+                        if vif in init_virtual_face:
+                            init_virtual_face.remove(vif)
+                        pass
                     vif[xi] = 0
                     vif[yi] = 0
 
@@ -1284,8 +1330,9 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                                 verts_done.append(cornerv)
                         for trfvco, trfva in zip(cos, co_attr_arr):
                             for vif in virtual_quad:
-                                vif[trfva[0]] = trfvco.x
-                                vif[trfva[1]] = trfvco.y
+                                if vif != None:
+                                    vif[trfva[0]] = trfvco.x
+                                    vif[trfva[1]] = trfvco.y
                     # endregion
                     
                     # region t pre-calc prep

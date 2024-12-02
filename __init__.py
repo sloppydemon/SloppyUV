@@ -1173,18 +1173,42 @@ class SloppySeamGenPanel(bpy.types.Panel):
         layout = self.layout
         seamgen_box = layout.box()
         seamgen_grid = seamgen_box.grid_flow(columns=2, even_columns=True)
-        props = context.scene.sloppy_props
 
-        seamgen_grid.operator("operator.sloppy_seam_gen")
+        seamgen_props = seamgen_grid.operator("operator.sloppy_seam_gen")
         sg_col_opt = seamgen_grid.column(heading="Seam Generation Options:")
-        sg_col_opt.prop(props, "seamgen_angle_fac")
-        sg_col_opt.prop(props, "seamgen_avg_angle_fac")
-        sg_col_opt.prop(props, "seamgen_ao_fac")
-        sg_col_opt.prop(props, "seamgen_ed_fac")
-        sg_col_opt.prop(props, "seamgen_rounds")
-        sg_col_opt.prop(props, "seamgen_retries")
-        sg_col_opt.prop(props, "seamgen_angle_threshold_start")
-        sg_col_opt.prop(props, "seamgen_angle_threshold_end")
+        sg_col_opt.prop(seamgen_props, "angle_fac")
+        sg_col_opt.prop(seamgen_props, "avg_angle_fac")
+        sg_col_opt.prop(seamgen_props, "ao_factor")
+        sg_col_opt.prop(seamgen_props, "ed_factor")
+        sg_col_opt.prop(seamgen_props, "no_rounds")
+        sg_col_opt.prop(seamgen_props, "no_retries")
+        sg_col_opt.prop(seamgen_props, "angle_thresh_start")
+        sg_col_opt.prop(seamgen_props, "angle_thresh_end")
+        sg_col_opt.prop(seamgen_props, "clear_seam")
+        sg_col_opt.prop(seamgen_props, "unwrap")
+
+class SloppyFlatQuadPanel(bpy.types.Panel):
+    bl_idname = "UV_PT_SloppyFlatQuadPanel"
+    bl_parent_id = "UV_PT_SloppyUVPanel"
+    bl_region_type = "UI"
+    bl_space_type = "IMAGE_EDITOR"
+    bl_category = "SloppyUV"
+    bl_label = "Flat Quad UV Unfold"
+
+    def draw(self, context):
+        layout = self.layout
+        fq_box = layout.box()
+
+        fq_props = fq_box.operator("operator.uv_quad_unfold")
+        fq_col_opt = fq_box.column(heading="Seam Generation Options:")
+        fq_col_opt.prop(fq_props, "unfold_mode")
+        fq_col_opt.prop(fq_props, "initial_quad")
+        fq_col_opt.prop(fq_props, "reg_flat_fac")
+        fq_col_opt.prop(fq_props, "reg_norm_fac")
+        fq_col_opt.prop(fq_props, "pre_calc_edge_lengths")
+        fq_col_opt.prop(fq_props, "offset_per_island")
+        fq_col_opt.prop(fq_props, "quant_avg_norm")
+        fq_col_opt.prop(fq_props, "only_move_loops_in_face")
 
 class SloppySortDistPanel(bpy.types.Panel):
     bl_idname = "UV_PT_SloppySortDistPanel"
@@ -2310,7 +2334,8 @@ classes = [SloppyProperties,
            SloppyProcAttrBake,
            SloppySelectByIndex,
            SloppyShiftSelectByIndex,
-           ProceduralQuadUVUnfold
+           ProceduralQuadUVUnfold,
+           SloppyFlatQuadPanel
            ]
 
 def register():

@@ -1111,7 +1111,7 @@ class ProceduralQuadUVUnfold(bpy.types.Operator):
                                 is_other_face_virtual = ifef[virtual_quad_attr]
                                 if is_other_face_virtual == True:
                                     other_virtual_face.append(bm.faces[ifef[vq_other_tri]])
-                                    for otv in other_virtual_face[1]:
+                                    for otv in other_virtual_face[1].verts:
                                         if otv not in other_verts:
                                             other_verts.append(otv)
                                 ifef[nom_dir] = di

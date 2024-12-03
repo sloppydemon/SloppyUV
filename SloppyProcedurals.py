@@ -7,8 +7,8 @@ import mathutils
 import bl_math
 import sys
 
-class ProceduralQuadUVUnfold(bpy.types.Operator):
-    bl_idname = "operator.uv_quad_unfold"
+class SloppyQuadUVUnfold(bpy.types.Operator):
+    bl_idname = "operator.sloppy_quad_unfold"
     bl_label = "Quad Unfold UVs"
     bl_description = "Attempt to unwrap quad mesh UVs as if from flat piece of cloth, with the assumption that all face corners should be right-angled originally"
     bl_options = {'REGISTER', 'UNDO'}

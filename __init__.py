@@ -22,7 +22,7 @@ from SloppyUV.SloppySortIndexByDist import SortVertByDist # type: ignore
 from SloppyUV.SloppySortIndexByDist import SortEdgeByDist # type: ignore
 from SloppyUV.SloppySortIndexByDist import SortFaceByDist # type: ignore
 from SloppyUV.SloppyBakeProcAttr import SloppyProcAttrBake # type: ignore
-from SloppyUV.SloppyProcedurals import ProceduralQuadUVUnfold # type: ignore
+from SloppyUV.SloppyProcedurals import SloppyQuadUVUnfold # type: ignore
 
 class SloppyProperties(bpy.types.PropertyGroup):
     
@@ -530,19 +530,6 @@ class SloppyProperties(bpy.types.PropertyGroup):
 
         return None
     
-    def update_seamgen_vars(self, context):
-        SloppySeamGen.angle_factor = self.seamgen_angle_fac
-        SloppySeamGen.avg_angle_factor = self.seamgen_avg_angle_fac
-        SloppySeamGen.ao_factor = self.seamgen_ao_fac
-        SloppySeamGen.ed_factor = self.seamgen_ed_fac
-        SloppySeamGen.no_rounds = self.seamgen_rounds
-        SloppySeamGen.no_retries = self.seamgen_retries
-        SloppySeamGen.angle_thresh_start = self.seamgen_angle_threshold_start
-        SloppySeamGen.angle_thresh_end = self.seamgen_angle_threshold_end
-        SloppySeamGen.clear_seam = self.seamgen_clear_seam
-        SloppySeamGen.unwrap = self.seamgen_unwrap
-        return None
-    
     def update_distsort_vars(self, context):
         SortVertByDist.bottom_up_mix = self.distsort_bottom_up
         SortVertByDist.z_only = self.distsort_z_only
@@ -551,20 +538,6 @@ class SloppyProperties(bpy.types.PropertyGroup):
         SortFaceByDist.bottom_up_mix = self.distsort_bottom_up
         SortFaceByDist.z_only = self.distsort_z_only
         return None
-    
-    seamgen_clear_seam : bP (
-        name = "Clear Seam",
-        description = "Clear existing seam before generating new seam",
-        default = False,
-        update = update_seamgen_vars
-        ) # type: ignore
-    
-    seamgen_unwrap : bP (
-        name = "Unwrap",
-        description = "Auto-unwrap. (Mainly to check if islands turn out as desired.)",
-        default = False,
-        update = update_seamgen_vars
-        ) # type: ignore
     
     distsort_bottom_up : bP (
         name = "From Bottom Up",
@@ -578,86 +551,6 @@ class SloppyProperties(bpy.types.PropertyGroup):
         description = "Only sort potential elements from Z",
         default = False,
         update = update_distsort_vars
-        ) # type: ignore
-    
-    seamgen_ao_fac : fP (
-        name = "AO Influence",
-        description = "Influence of ambient occlusion attribute on seam generation",
-        default = 0.0,
-        min = 0.0,
-        soft_min = 0.0,
-        max = 1.0,
-        soft_max = 1.0,
-        update = update_seamgen_vars
-        ) # type: ignore
-    
-    seamgen_ed_fac : fP (
-        name = "Edge Density Influence",
-        description = "Influence of surrounding edge density attribute on seam generation",
-        default = 0.0,
-        min = 0.0,
-        soft_min = 0.0,
-        max = 1.0,
-        soft_max = 1.0,
-        update = update_seamgen_vars
-        ) # type: ignore
-    
-    seamgen_rounds : iP (
-        name = "Iterations",
-        description = "Number of iterations of seam generation",
-        default = 20,
-        update = update_seamgen_vars
-        ) # type: ignore
-    
-    seamgen_retries : iP (
-        name = "Number of Retries",
-        description = "Number of retries at end of each iteration of seam generation",
-        default = 100,
-        update = update_seamgen_vars
-        ) # type: ignore
-    
-    seamgen_angle_threshold_start : fP (
-        name = "Angle Threshold Min",
-        description = "Angle threshold to start searching at",
-        default = -50.0,
-        min = -180.0,
-        soft_min = -180.0,
-        max = 180.0,
-        soft_max = 180.0,
-        update = update_seamgen_vars
-        ) # type: ignore
-    
-    seamgen_angle_threshold_end : fP (
-        name = "Angle Threshold Max",
-        description = "Angle threshold to end retries at",
-        default = -20.0,
-        min = -180.0,
-        soft_min = -180.0,
-        max = 180.0,
-        soft_max = 180.0,
-        update = update_seamgen_vars
-        ) # type: ignore
-    
-    seamgen_angle_fac : fP (
-        name = "Concavity Influence",
-        description = "Influence of edge angle concavity on seam generation",
-        default = 1.0,
-        min = 0.0,
-        soft_min = 0.0,
-        max = 1.0,
-        soft_max = 1.0,
-        update = update_seamgen_vars
-        ) # type: ignore
-    
-    seamgen_avg_angle_fac : fP (
-        name = "Average Concavity Influence",
-        description = "Influence of averaged edge angle concavity on seam generation",
-        default = 0.0,
-        min = 0.0,
-        soft_min = 0.0,
-        max = 1.0,
-        soft_max = 1.0,
-        update = update_seamgen_vars
         ) # type: ignore
     
     space_edges : bP(
@@ -1199,8 +1092,8 @@ class SloppyFlatQuadPanel(bpy.types.Panel):
         layout = self.layout
         fq_box = layout.box()
 
-        fq_props = fq_box.operator("operator.uv_quad_unfold")
-        fq_col_opt = fq_box.column(heading="Seam Generation Options:")
+        fq_props = fq_box.operator("operator.sloppy_quad_unfold")
+        fq_col_opt = fq_box.column(heading="Virtual Quad Unwrap Options:")
         fq_col_opt.prop(fq_props, "unfold_mode")
         fq_col_opt.prop(fq_props, "initial_quad")
         fq_col_opt.prop(fq_props, "reg_flat_fac")
@@ -2334,7 +2227,7 @@ classes = [SloppyProperties,
            SloppyProcAttrBake,
            SloppySelectByIndex,
            SloppyShiftSelectByIndex,
-           ProceduralQuadUVUnfold,
+           SloppyQuadUVUnfold,
            SloppyFlatQuadPanel
            ]
 

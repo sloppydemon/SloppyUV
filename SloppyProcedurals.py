@@ -7,6 +7,7 @@ import mathutils
 import bl_math
 import sys
 
+# region Quad Unfold
 class SloppyQuadUVUnfold(bpy.types.Operator):
     bl_idname = "operator.sloppy_quad_unfold"
     bl_label = "Quad Unfold UVs"
@@ -130,6 +131,7 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
             {"name": "co_lr_y", "type": "FLOAT", "domain": "FACE", "layer": None},
             {"name": "loop_corner_index", "type": "INT", "domain": "CORNER", "layer": None},
             {"name": "ind_face_uv", "type": "FLOAT_VECTOR", "domain": "CORNER", "layer": None},
+            {"name": "ind_face_uv_orig", "type": "FLOAT_VECTOR", "domain": "CORNER", "layer": None},
             {"name": "virtual_quad", "type": "INT", "domain": "FACE", "layer": None},
             {"name": "vq_other_tri", "type": "INT", "domain": "FACE", "layer": None},
             {"name": "vq_diagonal", "type": "INT", "domain": "FACE", "layer": None},
@@ -187,6 +189,7 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
         process_sequence_max = props.get_dict_layer("process_sequence_max", attr_dict)
         loop_corner_index = props.get_dict_layer("loop_corner_index", attr_dict)
         ind_face_uv = props.get_dict_layer("ind_face_uv", attr_dict)
+        ind_face_uv_orig = props.get_dict_layer("ind_face_uv_orig", attr_dict)
         xi = props.get_dict_layer("xi", attr_dict)
         yi = props.get_dict_layer("yi", attr_dict)
         avg_length_x = props.get_dict_layer("avg_length_x", attr_dict)
@@ -1123,6 +1126,25 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
                                 corner_loop[ind_face_uv][1] = 0.0
                 # endregion
                 
+                # region init ind uv orig
+                for ci, corner in enumerate(init_face_corner_verts[0]):
+                    for corner_loop in corner.link_loops:
+                        if corner_loop in init_virtual_loops:
+                            corner_loop[loop_corner_index] = ci
+                            if ci == 0:
+                                corner_loop[ind_face_uv][0] = 1.0
+                                corner_loop[ind_face_uv][1] = 1.0
+                            if ci == 1:
+                                corner_loop[ind_face_uv][0] = 0.0
+                                corner_loop[ind_face_uv][1] = 1.0
+                            if ci == 2:
+                                corner_loop[ind_face_uv][0] = 0.0
+                                corner_loop[ind_face_uv][1] = 0.0
+                            if ci == 3:
+                                corner_loop[ind_face_uv][0] = 1.0
+                                corner_loop[ind_face_uv][1] = 0.0
+                # endregion
+                
                 # region init face info
                 init_face_winding = check_winding(init_face, init_face_corner_verts)
                 if props.verbose == True:
@@ -1680,7 +1702,154 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
             bpy.ops.uv.unwrap(method='ANGLE_BASED', fill_holes=True, correct_aspect=True, use_subsurf_data=False, margin=0, no_flip=False, iterations=10, use_weights=False, weight_group="uv_importance", weight_factor=1)
 
         return {"FINISHED"}
+# endregion
 
+# region UV to Mesh
+class SloppyUVToMesh(bpy.types.Operator):
+    bl_idname = "operator.sloppy_uv_to_mesh"
+    bl_label = "Sloppy UV to Mesh"
+    bl_description = "Cut mesh by the seams and flatten out the pieces in the shape of their UVs"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    iP = bpy.props.IntProperty
+    fP = bpy.props.FloatProperty
+    fvP = bpy.props.FloatVectorProperty
+    bP = bpy.props.BoolProperty
+    eP = bpy.props.EnumProperty
+    bvP = bpy.props.BoolVectorProperty
+    sP = bpy.props.StringProperty
+
+    # region prop def
+    unfold_mode : eP(
+        name = "Mode",
+        description = "Unfolding Mode",
+        items = [
+            ("A", "All Directions", "Work outwards from initial quad"),
+            ("B", "X First", "Work outwards in (local) X first until no more faces are found, calculating edge lengths to use in next stage, then work outwards in Y. repeating first step when more faces are found in X"),
+            ("C", "Y First", "Work outwards in (local) Y first until no more faces are found, calculating edge lengths to use in next stage, then work outwards in X. repeating first step when more faces are found in Y")
+            ]
+        ) # type: ignore
+
+    initial_quad : eP(
+        name = "Initial Quad(s)",
+        description = "Which quad (for each UV island, if there are more than one,) to start from",
+        items = [
+            ("A", "Most Regular", "Start with quad (or virtual quad, formed by combining most regular face with adjacent triangle as calculated from face corner angles) that is flattest and/or that has normal most similar to island average normals"),
+            ("B", "Selected", "First selected quad (or virtual quad, formed from two first triangles selected, or, if only 1 triangle is selected in island, formed by combining with adjacent triangle as calculated from face corner angles) in each island (if an island has no faces selected, initial quad falls back to Most Regular)")
+            ]
+        ) # type: ignore
+
+    reg_flat_fac : fP(
+        name = "Flatness Factor",
+        description = "How much flatness influences initial quad selection",
+        default = 1.0,
+        min = 0.0,
+        max = 2.0
+        ) # type: ignore
+
+    reg_norm_fac : fP(
+        name = "Normal Factor",
+        description = "How much island average normal influences initial quad selection",
+        default = 1.0,
+        min = 0.0,
+        max = 2.0
+        ) # type: ignore
+
+    pre_calc_edge_lengths : bP(
+        name = "Pre-Calculate Edge Lengths",
+        description = "Calculate average edge lengths of columns and rows before setting UV coordinates",
+        default = False
+        ) # type: ignore
+
+    offset_per_island : fvP(
+        name = "Offset/Island",
+        description = "Offset UVs per island",
+        size = 2
+        ) # type: ignore
+
+    quant_avg_norm : bP(
+        name = "Quantize Average Normal",
+        description = "Quantize island's averaged normal to up, down, right, left",
+        default = False
+        ) # type: ignore
+
+    only_move_loops_in_face : bP(
+        name = "Only Edit Current Loops",
+        description = "Avoid moving loops of other faces than current face when editing UV loops",
+        default = False
+        ) # type: ignore
+    
+    #endregion
+
+    def execute(self, context):
+        props = context.scene.sloppy_props
+        bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
+        uv_layer = bm.loops.layers.uv.verify()
+        islands = bmesh_utils.bmesh_linked_uv_islands(bm, uv_layer)
+        
+        # region init vars
+        attr_dict = [
+            {"name": "loop_orig_co", "type": "FLOAT_VECTOR", "domain": "CORNER", "layer": None},
+            {"name": "v_orig_co", "type": "FLOAT_VECTOR", "domain": "POINT", "layer": None},
+            {"name": "loop_uv", "type": "FLOAT_VECTOR", "domain": "CORNER", "layer": None},
+            {"name": "v_uv", "type": "FLOAT_VECTOR", "domain": "POINT", "layer": None},
+            {"name": "loop_co_diff", "type": "FLOAT_VECTOR", "domain": "CORNER", "layer": None},
+            {"name": "v_co_diff", "type": "FLOAT_VECTOR", "domain": "POINT", "layer": None}
+            ]
+        
+        for nam in attr_dict:
+            attr = props.find_or_add_attribute(nam["name"], nam["type"], nam["domain"])
+            nam["layer"] = props.get_attribute_layer(nam["name"], nam["type"], nam["domain"], bm)
+        
+        loop_orig_co = props.get_dict_layer("loop_orig_co", attr_dict)
+        v_orig_co = props.get_dict_layer("v_orig_co", attr_dict)
+        loop_uv = props.get_dict_layer("loop_uv", attr_dict)
+        v_uv = props.get_dict_layer("v_uv", attr_dict)
+        loop_co_diff = props.get_dict_layer("loop_co_diff", attr_dict)
+        v_co_diff = props.get_dict_layer("v_co_diff", attr_dict)
+
+        # endregion
+
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
+
+        selected_edges = []
+
+        for vert in bm.verts:
+            vert.select = False
+        for edge in bm.edges:
+            if edge.seam == True:
+                edge.select = edge.seam
+                selected_edges.append(edge)
+            else:
+                edge.select = False
+        for face in bm.faces:
+            face.select = False
+
+        bpy.context.active_object.data.update()
+
+        bmesh.ops.split_edges(bm, edges=selected_edges)
+
+        bpy.context.active_object.data.update()
+
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
+
+        for face in bm.faces:
+            for loop in face.loops:
+                uvco = mathutils.Vector((loop[uv_layer].uv.x, loop[uv_layer].uv.y, 0))
+                uvdiff = uvco - loop.vert.co
+                loop.vert[v_uv] = uvco
+                loop.vert[v_co_diff] = uvdiff
+
+        bpy.context.active_object.data.update()
+
+        return {"FINISHED"}
+# endregion
+
+# region DeTriangulate
 class SloppyDeTriangulate(bpy.types.Operator):
     bl_idname = "operator.sloppy_detri"
     bl_label = "Detriangulate From Tri Pair"
@@ -3070,3 +3239,5 @@ class SloppyDeTriangulate(bpy.types.Operator):
             bpy.ops.uv.unwrap(method='ANGLE_BASED', fill_holes=True, correct_aspect=True, use_subsurf_data=False, margin=0, no_flip=False, iterations=10, use_weights=False, weight_group="uv_importance", weight_factor=1)
 
         return {"FINISHED"}
+
+# endregion

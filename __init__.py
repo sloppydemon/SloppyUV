@@ -23,6 +23,7 @@ from SloppyUV.SloppySortIndexByDist import SortEdgeByDist # type: ignore
 from SloppyUV.SloppySortIndexByDist import SortFaceByDist # type: ignore
 from SloppyUV.SloppyBakeProcAttr import SloppyProcAttrBake # type: ignore
 from SloppyUV.SloppyProcedurals import SloppyQuadUVUnfold # type: ignore
+from SloppyUV.SloppyProcedurals import SloppyUVToMesh # type: ignore
 
 class SloppyProperties(bpy.types.PropertyGroup):
     
@@ -101,6 +102,8 @@ class SloppyProperties(bpy.types.PropertyGroup):
             if attr_domain == "POINT":
                 if attr_type == "FLOAT_COLOR":
                     layer = bmi.verts.layers.float_color.get(name)
+                if attr_type == "FLOAT_VECTOR":
+                    layer = bmi.verts.layers.float_vector.get(name)
                 if attr_type == "FLOAT":
                     layer = bmi.verts.layers.float.get(name)
                 if attr_type == "INT":
@@ -2228,7 +2231,8 @@ classes = [SloppyProperties,
            SloppySelectByIndex,
            SloppyShiftSelectByIndex,
            SloppyQuadUVUnfold,
-           SloppyFlatQuadPanel
+           SloppyFlatQuadPanel,
+           SloppyUVToMesh
            ]
 
 def register():

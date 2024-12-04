@@ -22,6 +22,14 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
     bvP = bpy.props.BoolVectorProperty
     sP = bpy.props.StringProperty
 
+    def update_unfold_mode(self, context):
+        context.scene.sloppy_props.procuv_unfold_mode = self.unfold_mode
+        return None
+    
+    def update_initial_quad(self, context):
+        context.scene.sloppy_props.procuv_initial_quad = self.initial_quad
+        return None
+        
     # region ProcUV Properties
     unfold_mode : eP(
         name = "Mode",
@@ -30,7 +38,8 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
             ("A", "All Directions", "Work outwards from initial quad"),
             ("B", "X First", "Work outwards in (local) X first until no more faces are found, calculating edge lengths to use in next stage, then work outwards in Y. repeating first step when more faces are found in X"),
             ("C", "Y First", "Work outwards in (local) Y first until no more faces are found, calculating edge lengths to use in next stage, then work outwards in X. repeating first step when more faces are found in Y")
-            ]
+            ],
+        update=update_unfold_mode
         ) # type: ignore
 
     initial_quad : eP(
@@ -39,7 +48,8 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
         items = [
             ("A", "Most Regular", "Start with quad (or virtual quad, formed by combining most regular face with adjacent triangle as calculated from face corner angles) that is flattest and/or that has normal most similar to island average normals"),
             ("B", "Selected", "First selected quad (or virtual quad, formed from two first triangles selected, or, if only 1 triangle is selected in island, formed by combining with adjacent triangle as calculated from face corner angles) in each island (if an island has no faces selected, initial quad falls back to Most Regular)")
-            ]
+            ],
+        update=update_initial_quad
         ) # type: ignore
 
     reg_flat_fac : fP(
@@ -90,6 +100,9 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
         uv_layer = bm.loops.layers.uv.verify()
         islands = bmesh_utils.bmesh_linked_uv_islands(bm, uv_layer)
         
+        self.unfold_mode = props.procuv_unfold_mode
+        self.initial_quad = props.procuv_initial_quad
+
         # region init vars
         current_dir_array = []
         max_avg_angle = 0.0
@@ -779,7 +792,6 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
             init_face = None
             init_virtual_face = []
             avg_norm = mathutils.Vector((0,0,0))
-            i_offset = mathutils.Vector((self.offset_per_island[0] * ii, self.offset_per_island[1] * ii))
             if props.verbose: print(f"Island {ii}:")
 
             # region prep init search

@@ -654,24 +654,31 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
             return out_arrays
 
         def viz_quad(qe, qc, qf, vqf, virt, wnd):
-            ulc = str(qc[1].index).rjust(5)
-            uline = str(qe[0].index).center(11,"-")
-            urc = str(qc[0].index).ljust(5)
-            vline = "|".center(7)
-            vspace = " ".center(9)
-            vu = "^".center(7)
-            vd = "v".center(7)
+            fnamlen = 2 + len(str(qf.index))
+            if virt == True:
+                fnamlen = 3 + len(str(vqf[0].index)) + len(str(vqf[1].index))
+            max_l = max(len(str(qc[1].index)), len(str(qc[2].index)), len(str(qe[1].index)))
+            max_c = 2 + max(fnamlen, len(str(qe[0].index)), len(str(qe[2].index)))
+            max_r = max(len(str(qc[0].index)), len(str(qe[3].index)), len(str(qc[3].index)))
+            max_vline = max(max_l, max_r)
+            ulc = str(qc[1].index).rjust(max_vline)
+            uline = str(qe[0].index).center(max_c,"-")
+            urc = str(qc[0].index).ljust(max_vline)
+            vline = "|".center(max_vline)
+            vspace = " ".center(max_c)
+            vu = "^".center(max_vline)
+            vd = "v".center(max_vline)
             larrow = "<"
             rarrow = ">"
-            lline = str(qe[1].index).rjust(5)
-            fnam = str(qf.index).center(11)
+            lline = str(qe[1].index).rjust(max_vline)
+            fnam = str(qf.index).center(max_c)
             if virt == True:
                 fnama = str(vqf[0].index) + "/" + str(vqf[1].index)
-                fnam = fnama.center(12)
-            rline = str(qe[3].index).ljust(5)
-            llc = str(qc[2].index).rjust(5)
-            dline = str(qe[2].index).center(11, "-")
-            lrc = str(qc[3].index).ljust(5)
+                fnam = fnama.center(max_c)
+            rline = str(qe[3].index).ljust(max_vline)
+            llc = str(qc[2].index).rjust(max_vline)
+            dline = str(qe[2].index).center(max_c, "-")
+            lrc = str(qc[3].index).ljust(max_vline)
             quad_msg = "\n{0}{1}{2}\n{3}{4}{3}\n{3}{4}{3}\n{3}{4}{3}\n{5}{6}{7}\n{3}{4}{3}\n{3}{4}{3}\n{3}{4}{3}\n{8}{9}{10}\n".format(ulc,uline,urc,vline,vspace,lline,fnam,rline, llc, dline, lrc)
             if wnd == "CCW":
                 quad_msg = "\n{0}{1}{13}{2}\n{12}{4}{3}\n{3}{4}{3}\n{3}{4}{3}\n{5}{6}{7}\n{3}{4}{3}\n{3}{4}{3}\n{3}{4}{11}\n{8}{14}{9}{10}\n".format(ulc,uline,urc,vline,vspace,lline,fnam,rline, llc, dline, lrc, vu, vd, larrow, rarrow)
@@ -680,39 +687,50 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
             return quad_msg
 
         def viz_add_quad(qe, oqe, qc, oqc, qf, oqf, vqf, ovqf, virt, ovirt, add_dir):
-            ulc = str(qc[1].index).rjust(5)
-            oulc = str(oqc[1].index).rjust(5)
-            uline = str(qe[0].index).center(12,"=")
-            ouline = str(oqe[0].index).center(12,"-")
-            urc = str(qc[0].index).ljust(5)
-            ourc = str(oqc[0].index).ljust(5)
-            vline = "||".center(7)
-            ovline = "|".center(7)
-            vspace = " ".center(9)
-            ovspace = " ".center(19)
-            ohspace = " ".center(7)
-            ovu = "^".center(19)
-            ovd = "v".center(19)
-            olarrow = "<".center(7)
-            orarrow = ">".center(7)
-            lline = str(qe[1].index).rjust(5)
-            olline = str(oqe[1].index).rjust(5)
-            fnam = str(qf.index).center(12)
+            fnamlen = 2 + len(str(qf.index))
+            fnamolen = 2 + len(str(oqf.index))
+            if virt == True:
+                fnamlen = 3 + len(str(vqf[0].index)) + len(str(vqf[1].index))
+            if ovirt == True:
+                fnamolen = 3 + len(str(ovqf[0].index)) + len(str(ovqf[1].index))
+            max_l = max(len(str(qc[1].index)), len(str(oqc[1].index)), len(str(qc[2].index)), len(str(oqc[2].index)), len(str(qe[1].index)), len(str(oqe[1].index)))
+            max_c = 6 + max(fnamlen, fnamolen, len(str(qe[0].index)), len(str(oqe[0].index)), len(str(qe[2].index)), len(str(oqe[2].index)))
+            max_r = max(len(str(qc[0].index)), len(str(oqc[0].index)), len(str(qe[3].index)), len(str(oqe[3].index)), len(str(qc[3].index)), len(str(oqc[3].index)))
+            max_vline = max(max_l, max_r)
+            vspace_sum = max_c + (2 * max_vline)
+            ulc = str(qc[1].index).rjust(max_vline)
+            oulc = str(oqc[1].index).rjust(max_vline)
+            uline = str(qe[0].index).center(max_c,"=")
+            ouline = str(oqe[0].index).center(max_c,"-")
+            urc = str(qc[0].index).ljust(max_vline)
+            ourc = str(oqc[0].index).ljust(max_vline)
+            vline = "||".center(max_vline)
+            ovline = "|".center(max_vline)
+            vspace = " ".center(max_c)
+            ovspace = " ".center(vspace_sum)
+            ohspace = " ".center(max_c + 2)
+            ovu = "^".center(vspace_sum)
+            ovd = "v".center(vspace_sum)
+            olarrow = "<".center(max_c + 2)
+            orarrow = ">".center(max_c + 2)
+            lline = str(qe[1].index).rjust(max_vline)
+            olline = str(oqe[1].index).rjust(max_vline)
+            fnam = str(qf.index).center(max_c)
             if virt == True:
                 fnama = str(vqf[0].index) + "/" + str(vqf[1].index)
-                fnam = fnama.center(12)
-            ofnam = str(oqf.index).center(12)
+                fnam = fnama.center(max_c)
+            ofnam = str(oqf.index).center(max_c)
             if ovirt == True:
                 ofnama = str(ovqf[0].index) + "/" + str(ovqf[1].index)
-                ofnam = ofnama.center(12)
-            rline = str(qe[3].index).ljust(5)
-            orline = str(oqe[3].index).ljust(5)
-            llc = str(qc[2].index).rjust(5)
-            ollc = str(oqc[2].index).rjust(5)
-            dline = str(qe[2].index).center(12, "=")
-            odline = str(oqe[2].index).center(12, "-")
-            lrc = str(qc[3].index).ljust(5)
-            olrc = str(oqc[3].index).ljust(5)
+                ofnam = ofnama.center(max_c)
+            rline = str(qe[3].index).ljust(max_vline)
+            orline = str(oqe[3].index).ljust(max_vline)
+            llc = str(qc[2].index).rjust(max_vline)
+            ollc = str(oqc[2].index).rjust(max_vline)
+            dline = str(qe[2].index).center(max_c, "=")
+            odline = str(oqe[2].index).center(max_c, "-")
+            lrc = str(qc[3].index).ljust(max_vline)
+            olrc = str(oqc[3].index).ljust(max_vline)
 
             quad_msg_aa = "{0}{1}{2}".format(ulc,uline,urc)
             quad_msg_avsp = "{0}{1}{0}".format(vline,vspace)
@@ -1070,7 +1088,7 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
                             if ivl.index in island_loops:
                                 should_edit = True
                                 if self.only_move_loops_in_face == True:
-                                    should_edit = ivl in virtual_loops
+                                    should_edit = ivl in init_virtual_loops
                                 if should_edit == True:
                                     ivl[uv_layer].uv = ivco
                                     new_island_max_x = max(island_max_x, ivco.x)
@@ -1274,8 +1292,9 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
                     # region proc t face
                     if props.verbose: print(f"Island {ii} - Round {round}: Processing face {trf.index} with direction {trf[nom_dir]}.")
                     these_edges = [bm.edges[trf[edge_u]], bm.edges[trf[edge_l]], bm.edges[trf[edge_d]], bm.edges[trf[edge_r]]]
+
                     is_virtual_quad = False
-                    virtual_quad = [trf, trf]
+                    virtual_quad = [trf, None]
                     virtual_verts = []
                     virtual_loops = []
                     corners = []
@@ -1322,16 +1341,17 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
                     for corner_i, corner in enumerate(corners[0]):
                         if corner == None:
                             for vf in virtual_quad:
-                                vf[trailing_tri] = 1
-                                corner_missing = True
-                                vq_is = [None, None]
-                                for vqfi, vqf in enumerate(virtual_quad):
-                                    try:
-                                        vq_is[vqfi] = vqf.index
-                                    except:
-                                        pass
-                                if props.verbose == True:
-                                    print(f"Virtual quad corner {corner_i} failed to compute! Skipping virtual quad {vq_is}...")
+                                if vf != None:
+                                    vf[trailing_tri] = 1
+                                    vq_is = [None, None]
+                                    for vqfi, vqf in enumerate(virtual_quad):
+                                        try:
+                                            vq_is[vqfi] = vqf.index
+                                        except:
+                                            vq_is.pop()
+                                    if props.verbose == True and corner_missing == False:
+                                        print(f"Virtual quad corner {corner_i} failed to compute! Skipping virtual quad {vq_is}...")
+                                    corner_missing = True
                     
                     if corner_missing == False:
                         for ci, corner in enumerate(corners[0]):
@@ -1542,7 +1562,10 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
                                                 for vif in virtual_quad:
                                                     if ife in vif.edges:
                                                         adj_face = vif
-                                            other_dir_arr = get_other_dir_edges(these_edges, corners, adj_face, ifef, di)
+                                            try:
+                                                other_dir_arr = get_other_dir_edges(these_edges, corners, adj_face, ifef, di)
+                                            except:
+                                                ifef[trailing_tri] = 1
                                             ifef[nom_dir] = di
                                             ifef[nom] = adj_face.index
                                             ifef[process_sequence_attr] = process_sequence
@@ -1622,8 +1645,8 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
                 if props.verbose == True: print(f"Island {ii} width: {offset_add_x}")
                 offset_add_y = island_max_y - island_min_y
                 if props.verbose == True: print(f"Island {ii} height: {offset_add_y}")
-                previous_island_end_x += self.offset_per_island[0] * offset_add_x
-                previous_island_end_y += self.offset_per_island[1] * offset_add_y
+                previous_island_end_x += (self.offset_per_island[0] * offset_add_x)
+                previous_island_end_y += (self.offset_per_island[1] * offset_add_y)
 
             # region apply pre-calc
             if self.pre_calc_edge_lengths == True and (len(edge_length_map_x[0]) + len(edge_length_map_y[0])) > 0:
@@ -1723,11 +1746,11 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
                     this_total_b_len += b_len
                 
                 if self.unfold_mode == "C":
-                    previous_island_end_x += self.offset_per_island[0] * this_total_b_len
-                    previous_island_end_y += self.offset_per_island[1] * this_total_a_len
+                    previous_island_end_x += (self.offset_per_island[0] * this_total_b_len)
+                    previous_island_end_y += (self.offset_per_island[1] * this_total_a_len)
                 else:
-                    previous_island_end_x += self.offset_per_island[0] * this_total_a_len
-                    previous_island_end_y += self.offset_per_island[1] * this_total_b_len
+                    previous_island_end_x += (self.offset_per_island[0] * this_total_a_len)
+                    previous_island_end_y += (self.offset_per_island[1] * this_total_b_len)
                 bpy.context.active_object.data.update()
             # endregion
 

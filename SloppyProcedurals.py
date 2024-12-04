@@ -22,7 +22,7 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
     bvP = bpy.props.BoolVectorProperty
     sP = bpy.props.StringProperty
 
-    # region prop def
+    # region ProcUV Properties
     unfold_mode : eP(
         name = "Mode",
         description = "Unfolding Mode",
@@ -75,13 +75,13 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
         description = "Quantize island's averaged normal to up, down, right, left",
         default = False
         ) # type: ignore
+    #endregion
 
     only_move_loops_in_face : bP(
-        name = "Only Edit Current Loops",
-        description = "Avoid moving loops of other faces than current face when editing UV loops",
+        name = "Quantize Average Normal",
+        description = "Quantize island's averaged normal to up, down, right, left",
         default = False
         ) # type: ignore
-    
     #endregion
 
     def execute(self, context):
@@ -108,11 +108,8 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
                 },
             ]
 
+        # region Attributes
         attr_dict = [
-            {"name": "naboL", "type": "INT", "domain": "FACE", "layer": None},
-            {"name": "naboR", "type": "INT", "domain": "FACE", "layer": None},
-            {"name": "naboU", "type": "INT", "domain": "FACE", "layer": None},
-            {"name": "naboD", "type": "INT", "domain": "FACE", "layer": None},
             {"name": "edge_u", "type": "INT", "domain": "FACE", "layer": None},
             {"name": "edge_l", "type": "INT", "domain": "FACE", "layer": None},
             {"name": "edge_d", "type": "INT", "domain": "FACE", "layer": None},
@@ -155,9 +152,6 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
             attr = props.find_or_add_attribute(nam["name"], nam["type"], nam["domain"])
             nam["layer"] = props.get_attribute_layer(nam["name"], nam["type"], nam["domain"], bm)
         
-        naboL = props.get_dict_layer("naboL", attr_dict)
-        naboR = props.get_dict_layer("naboR", attr_dict)
-        naboU = props.get_dict_layer("naboU", attr_dict)
         flatness = props.get_dict_layer("flatness", attr_dict)
         normal_regularity = props.get_dict_layer("normal_regularity", attr_dict)
         island_index = props.get_dict_layer("island_index", attr_dict)
@@ -194,9 +188,9 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
         yi = props.get_dict_layer("yi", attr_dict)
         avg_length_x = props.get_dict_layer("avg_length_x", attr_dict)
         avg_length_y = props.get_dict_layer("avg_length_y", attr_dict)
-
-
+        
         co_attr_arr = [[co_ur_x, co_ur_y], [co_ul_x, co_ul_y], [co_ll_x, co_ll_y], [co_lr_x, co_lr_y]]
+        # endregion
 
         quant_arr = [
             [mathutils.Vector((1,0,0)), 
@@ -356,12 +350,17 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
                         for avfe in avf.edges:
                             if avfe not in edge_arr:
                                 if main_tri in avfe.link_faces:
-                                    main_tri_adjacent = True
-                                    diagonal_edge = avfe
+                                    if avfe.seam == False:
+                                        main_tri_adjacent = True
+                                        diagonal_edge = avfe
+                                    if avfe.seam == True:
+                                        tri_trailing = True
                         if main_tri_adjacent == True:
                             far_tri = avf
                             if len(far_tri.edges) > 3:
                                 tri_trailing = True
+                if far_tri == None:
+                    tri_trailing = True
                 if tri_trailing == False:
                     if far_tri[island_index] == main_tri[island_index]:
                         main_tri[virtual_quad_attr] = 1
@@ -740,6 +739,10 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
         previous_island_end_y = 0.0
 
         for ii, island in enumerate(islands):
+            for iif in island:
+                iif[island_index] = ii
+
+        for ii, island in enumerate(islands):
             bm.verts.ensure_lookup_table()
             bm.edges.ensure_lookup_table()
             bm.faces.ensure_lookup_table()
@@ -799,7 +802,6 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
                 face[flatness] = new_flatness
                 n_dot_avg = face.normal.dot(current_avg_normal)
                 face[normal_regularity] = props.remap_val(n_dot_avg, -1.0, 1.0, 0.0, 1.0)
-                face[island_index] = ii
             
             bpy.context.active_object.data.update()
             # endregion
@@ -1066,16 +1068,20 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
                     for iv, ivco in zip(init_face_corner_verts[0], init_face_corner_vert_cos):
                         for ivl in iv.link_loops:
                             if ivl.index in island_loops:
-                                ivl[uv_layer].uv = ivco
-                                new_island_max_x = max(island_max_x, ivco.x)
-                                island_max_x = new_island_max_x
-                                new_island_min_x = min(island_min_x, ivco.x)
-                                island_min_x = new_island_min_x
-                                new_island_max_y = max(island_max_y, ivco.y)
-                                island_max_y = new_island_max_y
-                                new_island_min_y = min(island_min_y, ivco.y)
-                                island_min_y = new_island_min_y
-                                ivl[uv_layer].pin_uv = True
+                                should_edit = True
+                                if self.only_move_loops_in_face == True:
+                                    should_edit = vil in virtual_loops
+                                if should_edit == True:
+                                    ivl[uv_layer].uv = ivco
+                                    new_island_max_x = max(island_max_x, ivco.x)
+                                    island_max_x = new_island_max_x
+                                    new_island_min_x = min(island_min_x, ivco.x)
+                                    island_min_x = new_island_min_x
+                                    new_island_max_y = max(island_max_y, ivco.y)
+                                    island_max_y = new_island_max_y
+                                    new_island_min_y = min(island_min_y, ivco.y)
+                                    island_min_y = new_island_min_y
+                                    ivl[uv_layer].pin_uv = True
                         if iv not in verts_done:
                             verts_done.append(iv)
                 # endregion
@@ -1127,22 +1133,21 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
                 # endregion
                 
                 # region init ind uv orig
-                for ci, corner in enumerate(init_face_corner_verts[0]):
+                for ci, corner in zip(init_face_corner_verts[0], init_face_corner_verts[0]):
                     for corner_loop in corner.link_loops:
                         if corner_loop in init_virtual_loops:
-                            corner_loop[loop_corner_index] = ci
                             if ci == 0:
-                                corner_loop[ind_face_uv][0] = 1.0
-                                corner_loop[ind_face_uv][1] = 1.0
+                                corner_loop[ind_face_uv_orig][0] = 1.0
+                                corner_loop[ind_face_uv_orig][1] = 1.0
                             if ci == 1:
-                                corner_loop[ind_face_uv][0] = 0.0
-                                corner_loop[ind_face_uv][1] = 1.0
+                                corner_loop[ind_face_uv_orig][0] = 0.0
+                                corner_loop[ind_face_uv_orig][1] = 1.0
                             if ci == 2:
-                                corner_loop[ind_face_uv][0] = 0.0
-                                corner_loop[ind_face_uv][1] = 0.0
+                                corner_loop[ind_face_uv_orig][0] = 0.0
+                                corner_loop[ind_face_uv_orig][1] = 0.0
                             if ci == 3:
-                                corner_loop[ind_face_uv][0] = 1.0
-                                corner_loop[ind_face_uv][1] = 0.0
+                                corner_loop[ind_face_uv_orig][0] = 1.0
+                                corner_loop[ind_face_uv_orig][1] = 0.0
                 # endregion
                 
                 # region init face info
@@ -1297,7 +1302,6 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
                         is_virtual_quad = True
                         if trof in faces_remain:
                             faces_remain.remove(trof)
-
                     
                     avg_edge_length_x = (these_edges[0].calc_length() + these_edges[2].calc_length()) / 2
                     avg_edge_length_y = (these_edges[1].calc_length() + these_edges[3].calc_length()) / 2
@@ -1309,10 +1313,10 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
                             for vfv in vf.verts:
                                 if vfv not in virtual_verts:
                                     virtual_verts.append(vfv)
-                            corners = get_corner_verts(these_edges, virtual_verts)
                             for vfl in vf.loops:
                                 if vfl not in virtual_loops:
                                     virtual_loops.append(vfl)
+                    corners = get_corner_verts(these_edges, virtual_verts)
                     
                     for ci, corner in enumerate(corners[0]):
                         for corner_loop in corner.link_loops:
@@ -1330,6 +1334,22 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
                                 if ci == 3:
                                     corner_loop[ind_face_uv][0] = 1.0
                                     corner_loop[ind_face_uv][1] = 0.0
+                    
+                    for ci, corner in zip(corners[1], corners[0]):
+                        for corner_loop in corner.link_loops:
+                            if corner_loop in virtual_loops:
+                                if ci == 0:
+                                    corner_loop[ind_face_uv_orig][0] = 1.0
+                                    corner_loop[ind_face_uv_orig][1] = 1.0
+                                if ci == 1:
+                                    corner_loop[ind_face_uv_orig][0] = 0.0
+                                    corner_loop[ind_face_uv_orig][1] = 1.0
+                                if ci == 2:
+                                    corner_loop[ind_face_uv_orig][0] = 0.0
+                                    corner_loop[ind_face_uv_orig][1] = 0.0
+                                if ci == 3:
+                                    corner_loop[ind_face_uv_orig][0] = 1.0
+                                    corner_loop[ind_face_uv_orig][1] = 0.0
                     
                     if props.verbose:
                         if is_virtual_quad == False:
@@ -1365,16 +1385,20 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
                         for vi, cornerv in enumerate(corners[0]):
                             for vil in cornerv.link_loops:
                                 if vil.index in island_loops:
-                                    vil[uv_layer].uv = cos[vi]
-                                    new_island_max_x = max(island_max_x, cos[vi].x)
-                                    island_max_x = new_island_max_x
-                                    new_island_min_x = min(island_min_x, cos[vi].x)
-                                    island_min_x = new_island_min_x
-                                    new_island_max_y = max(island_max_y, cos[vi].y)
-                                    island_max_y = new_island_max_y
-                                    new_island_min_y = min(island_min_y, cos[vi].y)
-                                    island_min_y = new_island_min_y
-                                    vil[uv_layer].pin_uv = True
+                                    should_edit = True
+                                    if self.only_move_loops_in_face == True:
+                                        should_edit = vil in virtual_loops
+                                    if should_edit == True:
+                                        vil[uv_layer].uv = cos[vi]
+                                        new_island_max_x = max(island_max_x, cos[vi].x)
+                                        island_max_x = new_island_max_x
+                                        new_island_min_x = min(island_min_x, cos[vi].x)
+                                        island_min_x = new_island_min_x
+                                        new_island_max_y = max(island_max_y, cos[vi].y)
+                                        island_max_y = new_island_max_y
+                                        new_island_min_y = min(island_min_y, cos[vi].y)
+                                        island_min_y = new_island_min_y
+                                        vil[uv_layer].pin_uv = True
                             if cornerv not in verts_done:
                                 verts_done.append(cornerv)
                         for trfvco, trfva in zip(cos, co_attr_arr):
@@ -1701,6 +1725,11 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
         except:
             bpy.ops.uv.unwrap(method='ANGLE_BASED', fill_holes=True, correct_aspect=True, use_subsurf_data=False, margin=0, no_flip=False, iterations=10, use_weights=False, weight_group="uv_importance", weight_factor=1)
 
+        bpy.context.active_object.data.update()
+
+        for face in bm.faces:
+            for loop in face.loops:
+                loop[uv_layer].pin_uv = False
         return {"FINISHED"}
 # endregion
 
@@ -2204,6 +2233,8 @@ class SloppyDeTriangulate(bpy.types.Operator):
                             far_tri = avf
                             if len(far_tri.edges) > 3:
                                 tri_trailing = True
+                if far_tri == None:
+                    tri_trailing = True
                 if tri_trailing == False:
                     if far_tri[island_index] == main_tri[island_index]:
                         main_tri[virtual_quad_attr] = 1

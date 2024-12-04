@@ -35,6 +35,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
     bvP = bpy.props.BoolVectorProperty
     sP = bpy.props.StringProperty
     
+    # region Functions
     def viewco(self, vec):
         '''Fetches (TODO: active or) any View3D region and space and outputs the input vector mapped
         to that 3D view.'''
@@ -541,7 +542,9 @@ class SloppyProperties(bpy.types.PropertyGroup):
         SortFaceByDist.bottom_up_mix = self.distsort_bottom_up
         SortFaceByDist.z_only = self.distsort_z_only
         return None
-    
+    # endregion
+
+    # region Properties Def
     distsort_bottom_up : bP (
         name = "From Bottom Up",
         description = "Weigh sorting of distance sort from bottom up",
@@ -877,6 +880,148 @@ class SloppyProperties(bpy.types.PropertyGroup):
         default = "",
         ) # type: ignore
 
+    # region SeamGen Properties
+    seamgen_angle_factor : fP(
+        name = "Concavity Influence",
+        description = "Influence of concavity on seam generation",
+        default = 1,
+        min = 0,
+        max = 1
+        ) # type: ignore
+
+    seamgen_avg_angle_factor : fP(
+        name = "Average Concavity Influence",
+        description = "Influence of averaged area concavity on seam generation",
+        default = 0,
+        min = 0,
+        max = 1
+        ) # type: ignore
+
+    seamgen_ao_factor : fP(
+        name = "AO Influence",
+        description = "Influence of ambient occlusion on seam generation",
+        default = 0,
+        min = 0,
+        max = 1
+        ) # type: ignore
+
+    seamgen_ed_factor : fP(
+        name = "Edge Density Influence",
+        description = "Influence of edge density on seam generation",
+        default = 0,
+        min = 0,
+        max = 1
+        ) # type: ignore
+
+    seamgen_no_rounds : iP(
+        name = "Iterations",
+        description = "Number of initial iterations",
+        default = 20,
+        min = 1,
+        max = 1000
+        ) # type: ignore
+
+    seamgen_no_retries : iP(
+        name = "Max Retries",
+        description = "Maximum number of retry iterations",
+        default = 100,
+        min = 1,
+        max = 1000
+        ) # type: ignore
+
+    seamgen_angle_thresh_start : fP(
+        name = "Min Angle Threshold",
+        description = "Initial angular threshold",
+        default = -50,
+        min = -180,
+        max = 180
+        ) # type: ignore
+
+    seamgen_angle_thresh_end : fP(
+        name = "Max Angle Threshold",
+        description = "Maximum angular threshold",
+        default = -20,
+        min = -180,
+        max = 180
+        ) # type: ignore
+
+    seamgen_clear_seam : bP(
+        name = "Clear Seams",
+        description = "Clear any existing seams",
+        default = True
+        ) # type: ignore
+
+    seamgen_unwrap : bP(
+        name = "Unwrap",
+        description = "Run auto-unwrap. (Mainly to check if islands turn out as desired.)",
+        default = True
+        ) # type: ignore
+    # endregion
+
+    # region ProcUV Properties
+    procuv_unfold_mode : eP(
+        name = "Mode",
+        description = "Unfolding Mode",
+        items = [
+            ("A", "All Directions", "Work outwards from initial quad"),
+            ("B", "X First", "Work outwards in (local) X first until no more faces are found, calculating edge lengths to use in next stage, then work outwards in Y. repeating first step when more faces are found in X"),
+            ("C", "Y First", "Work outwards in (local) Y first until no more faces are found, calculating edge lengths to use in next stage, then work outwards in X. repeating first step when more faces are found in Y")
+            ]
+        ) # type: ignore
+
+    procuv_initial_quad : eP(
+        name = "Initial Quad(s)",
+        description = "Which quad (for each UV island, if there are more than one,) to start from",
+        items = [
+            ("A", "Most Regular", "Start with quad (or virtual quad, formed by combining most regular face with adjacent triangle as calculated from face corner angles) that is flattest and/or that has normal most similar to island average normals"),
+            ("B", "Selected", "First selected quad (or virtual quad, formed from two first triangles selected, or, if only 1 triangle is selected in island, formed by combining with adjacent triangle as calculated from face corner angles) in each island (if an island has no faces selected, initial quad falls back to Most Regular)")
+            ]
+        ) # type: ignore
+
+    procuv_reg_flat_fac : fP(
+        name = "Flatness Factor",
+        description = "How much flatness influences initial quad selection",
+        default = 1.0,
+        min = 0.0,
+        max = 2.0
+        ) # type: ignore
+
+    procuv_reg_norm_fac : fP(
+        name = "Normal Factor",
+        description = "How much island average normal influences initial quad selection",
+        default = 1.0,
+        min = 0.0,
+        max = 2.0
+        ) # type: ignore
+
+    procuv_pre_calc_edge_lengths : bP(
+        name = "Pre-Calculate Edge Lengths",
+        description = "Calculate average edge lengths of columns and rows before setting UV coordinates",
+        default = False
+        ) # type: ignore
+
+    procuv_offset_per_island : fvP(
+        name = "Offset/Island",
+        description = "Offset UVs per island",
+        size = 2
+        ) # type: ignore
+
+    procuv_quant_avg_norm : bP(
+        name = "Quantize Average Normal",
+        description = "Quantize island's averaged normal to up, down, right, left",
+        default = False
+        ) # type: ignore
+
+    procuv_only_move_loops_in_face : bP(
+        name = "Only Edit Current Loops",
+        description = "Avoid moving loops of other faces than current face when editing UV loops",
+        default = False
+        ) # type: ignore
+    #endregion
+    # endregion
+
+
+#region Panel Classes
 class SloppyUVPanel(bpy.types.Panel):
     bl_idname = "UV_PT_SloppyUVPanel"
     bl_label = "Sloppy UV"
@@ -1068,20 +1213,31 @@ class SloppySeamGenPanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         seamgen_box = layout.box()
-        seamgen_grid = seamgen_box.grid_flow(columns=2, even_columns=True)
+        props = context.scene.sloppy_props
+        
+        seamgen_props = seamgen_box.operator("operator.sloppy_seam_gen")
+        sg_col_opt = seamgen_box.column(heading="Seam Generation Options:")
+        sg_col_opt.prop(props, "seamgen_angle_factor")
+        sg_col_opt.prop(props, "seamgen_avg_angle_factor")
+        sg_col_opt.prop(props, "seamgen_ao_factor")
+        sg_col_opt.prop(props, "seamgen_ed_factor")
+        sg_col_opt.prop(props, "seamgen_no_rounds")
+        sg_col_opt.prop(props, "seamgen_no_retries")
+        sg_col_opt.prop(props, "seamgen_angle_thresh_start")
+        sg_col_opt.prop(props, "seamgen_angle_thresh_end")
+        sg_col_opt.prop(props, "seamgen_clear_seam")
+        sg_col_opt.prop(props, "seamgen_unwrap")
 
-        seamgen_props = seamgen_grid.operator("operator.sloppy_seam_gen")
-        sg_col_opt = seamgen_grid.column(heading="Seam Generation Options:")
-        sg_col_opt.prop(seamgen_props, "angle_fac")
-        sg_col_opt.prop(seamgen_props, "avg_angle_fac")
-        sg_col_opt.prop(seamgen_props, "ao_factor")
-        sg_col_opt.prop(seamgen_props, "ed_factor")
-        sg_col_opt.prop(seamgen_props, "no_rounds")
-        sg_col_opt.prop(seamgen_props, "no_retries")
-        sg_col_opt.prop(seamgen_props, "angle_thresh_start")
-        sg_col_opt.prop(seamgen_props, "angle_thresh_end")
-        sg_col_opt.prop(seamgen_props, "clear_seam")
-        sg_col_opt.prop(seamgen_props, "unwrap")
+        seamgen_props["angle_factor"] = props.seamgen_angle_factor
+        seamgen_props["avg_angle_factor"] = props.seamgen_avg_angle_factor
+        seamgen_props["ao_factor"] = props.seamgen_ao_factor
+        seamgen_props["ed_factor"] = props.seamgen_ed_factor
+        seamgen_props["no_rounds"] = props.seamgen_no_rounds
+        seamgen_props["no_retries"] = props.seamgen_no_retries
+        seamgen_props["angle_thresh_start"] = props.seamgen_angle_thresh_start
+        seamgen_props["angle_thresh_end"] = props.seamgen_angle_thresh_end
+        seamgen_props["clear_seam"] = props.seamgen_clear_seam
+        seamgen_props["unwrap"] = props.seamgen_unwrap
 
 class SloppyFlatQuadPanel(bpy.types.Panel):
     bl_idname = "UV_PT_SloppyFlatQuadPanel"
@@ -1094,17 +1250,26 @@ class SloppyFlatQuadPanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         fq_box = layout.box()
+        props = context.scene.sloppy_props
 
         fq_props = fq_box.operator("operator.sloppy_quad_unfold")
         fq_col_opt = fq_box.column(heading="Virtual Quad Unwrap Options:")
-        fq_col_opt.prop(fq_props, "unfold_mode")
-        fq_col_opt.prop(fq_props, "initial_quad")
-        fq_col_opt.prop(fq_props, "reg_flat_fac")
-        fq_col_opt.prop(fq_props, "reg_norm_fac")
-        fq_col_opt.prop(fq_props, "pre_calc_edge_lengths")
-        fq_col_opt.prop(fq_props, "offset_per_island")
-        fq_col_opt.prop(fq_props, "quant_avg_norm")
-        fq_col_opt.prop(fq_props, "only_move_loops_in_face")
+        fq_col_opt.prop(props, "procuv_unfold_mode")
+        fq_col_opt.prop(props, "procuv_initial_quad")
+        fq_col_opt.prop(props, "procuv_reg_flat_fac")
+        fq_col_opt.prop(props, "procuv_reg_norm_fac")
+        fq_col_opt.prop(props, "procuv_pre_calc_edge_lengths")
+        fq_col_opt.prop(props, "procuv_offset_per_island")
+        fq_col_opt.prop(props, "procuv_quant_avg_norm")
+        fq_col_opt.prop(props, "procuv_only_move_loops_in_face")
+        fq_props["unfold_mode"] = props.procuv_unfold_mode
+        fq_props["initial_quad"] = props.procuv_initial_quad
+        fq_props["reg_flat_fac"] = props.procuv_reg_flat_fac
+        fq_props["reg_norm_fac"] = props.procuv_reg_norm_fac
+        fq_props["pre_calc_edge_lengths"] = props.procuv_pre_calc_edge_lengths
+        fq_props["offset_per_island"] = props.procuv_offset_per_island
+        fq_props["quant_avg_norm"] = props.procuv_quant_avg_norm
+        fq_props["only_move_loops_in_face"] = props.procuv_only_move_loops_in_face
 
 class SloppySortDistPanel(bpy.types.Panel):
     bl_idname = "UV_PT_SloppySortDistPanel"
@@ -1140,6 +1305,7 @@ class SloppyDebugPanel(bpy.types.Panel):
         props = context.scene.sloppy_props
         
         layout.prop(props, "verbose")
+# endregion
 
 class SloppyErrorDialog(bpy.types.Operator):
     bl_idname = "operator.sloppy_dialog"

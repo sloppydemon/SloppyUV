@@ -16,6 +16,7 @@ class SloppySeamGen(bpy.types.Operator):
     bvP = bpy.props.BoolVectorProperty
     sP = bpy.props.StringProperty
 
+    # region SeamGen Properties
     angle_factor : fP(
         name = "Concavity Influence",
         description = "Influence of concavity on seam generation",
@@ -91,6 +92,7 @@ class SloppySeamGen(bpy.types.Operator):
         description = "Run auto-unwrap. (Mainly to check if islands turn out as desired.)",
         default = True
         ) # type: ignore
+    # endregion
 
     def execute(self, context):
         props = context.scene.sloppy_props

@@ -22,6 +22,7 @@ from SloppyUV.SloppySortIndexByDist import SortVertByDist # type: ignore
 from SloppyUV.SloppySortIndexByDist import SortEdgeByDist # type: ignore
 from SloppyUV.SloppySortIndexByDist import SortFaceByDist # type: ignore
 from SloppyUV.SloppyBakeProcAttr import SloppyProcAttrBake # type: ignore
+from SloppyUV.SloppyBakeProcAttr import SloppyBlurAttribute # type: ignore
 from SloppyUV.SloppyProcedurals import SloppyQuadUVUnfold # type: ignore
 from SloppyUV.SloppyProcedurals import SloppyUVToMesh # type: ignore
 
@@ -2394,6 +2395,7 @@ classes = [SloppyProperties,
            SortFaceByDist,
            SloppySortDistPanel,
            SloppyProcAttrBake,
+           SloppyBlurAttribute,
            SloppySelectByIndex,
            SloppyShiftSelectByIndex,
            SloppyQuadUVUnfold,

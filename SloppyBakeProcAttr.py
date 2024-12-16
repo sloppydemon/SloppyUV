@@ -64,7 +64,7 @@ class SloppyProcAttrBake(bpy.types.Operator):
         max_fthick = 0
         min_fthick = 100
 
-        # DISTANCE ALONG SEAM (+ 
+        # region DIST ALONG SEAM 
 
         along_edges = []
         along_faces = []
@@ -334,9 +334,9 @@ class SloppyProcAttrBake(bpy.types.Operator):
 
         max_face_index_sum = max(max_face_indices)
         max_distance_along_seam = max(distances_along_seams)
+        # endregion
 
-        # FACE THICKNESS
-
+        # region FACE THICKNESS
         bpy.context.active_object.data.update() 
 
         for v in bm.verts:
@@ -373,9 +373,9 @@ class SloppyProcAttrBake(bpy.types.Operator):
                 v[face_thickness] += thick
 
         bpy.context.active_object.data.update()
+        # endregion
 
-        # VERT THICKNESS + CURVATURE
-
+        # region VERT THICK + CURV
         for v in bm.verts:
             curv = 0
             for edge in v.link_edges:
@@ -418,8 +418,9 @@ class SloppyProcAttrBake(bpy.types.Operator):
 
         bpy.context.active_object.data.update() 
 
-        # DISTANCE FROM SEAM
+        # endregion
 
+        # region DIST FROM SEAM
         for v in bm.verts:
             v[seam_dist] = 0.0
             v[num_paths] = 0
@@ -438,9 +439,7 @@ class SloppyProcAttrBake(bpy.types.Operator):
                                 seed_verts.append(v)
                         done_loops.append(loop)
                         seam_loops.append(loop)
-
-
-                        
+         
         bpy.context.active_object.data.update()
 
         remain = len(bm.verts) - len(done_verts)
@@ -484,6 +483,7 @@ class SloppyProcAttrBake(bpy.types.Operator):
             remain = len(bm.verts) - len(done_verts)
             
             bpy.context.active_object.data.update()
+        # endregion
 
         print(f"Maximum distance from seam: {max_dist}. Maximum number of paths: {max_paths}")
         bpy.context.object["MaxDistanceFromSeam"] = max_dist

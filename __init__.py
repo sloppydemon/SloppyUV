@@ -18,6 +18,7 @@ bl_info = {
 }
 
 from SloppyUV.SloppySeamGeneration import SloppySeamGen # type: ignore
+from SloppyUV.SloppySeamGeneration import SloppySeamGenVis # type: ignore
 from SloppyUV.SloppySortIndexByDist import SortVertByDist # type: ignore
 from SloppyUV.SloppySortIndexByDist import SortEdgeByDist # type: ignore
 from SloppyUV.SloppySortIndexByDist import SortFaceByDist # type: ignore
@@ -2389,6 +2390,7 @@ classes = [SloppyProperties,
            SloppyAlignUVsUV,
            SloppyAlignUVs,
            SloppySeamGen,
+           SloppySeamGenVis,
            SloppySeamGenPanel,
            SortVertByDist,
            SortEdgeByDist,

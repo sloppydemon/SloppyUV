@@ -1,10 +1,11 @@
 import bpy
 import bmesh
 import math
+import mathutils
 
 class SloppySeamGen(bpy.types.Operator):
     bl_idname = "operator.sloppy_seam_gen"
-    bl_label = "Generate Seans"
+    bl_label = "Generate Seams"
     bl_description = "Generate seams according to edge concavity, among other things"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -16,6 +17,7 @@ class SloppySeamGen(bpy.types.Operator):
     bvP = bpy.props.BoolVectorProperty
     sP = bpy.props.StringProperty
 
+    # region SeamGen Properties
     angle_factor : fP(
         name = "Concavity Influence",
         description = "Influence of concavity on seam generation",
@@ -91,6 +93,7 @@ class SloppySeamGen(bpy.types.Operator):
         description = "Run auto-unwrap. (Mainly to check if islands turn out as desired.)",
         default = True
         ) # type: ignore
+    # endregion
 
     def execute(self, context):
         props = context.scene.sloppy_props
@@ -415,6 +418,218 @@ class SloppySeamGen(bpy.types.Operator):
         if self.unwrap == True:
             selected_before = []
             loops_selected_before = []
+            for face in bm.faces:
+                if face.select == True:
+                    selected_before.append(face)
+                face.select = True
+            bpy.ops.uv.unwrap(method='ANGLE_BASED', margin=0)
+            for face in bm.faces:
+                if face in selected_before:
+                    pass
+                else:
+                    face.select = False
+
+        
+        return {"FINISHED"}
+
+class SloppySeamGenVis(bpy.types.Operator):
+    bl_idname = "operator.sloppy_seam_gen_vis"
+    bl_label = "Generate Visibility Seams"
+    bl_description = "Generate seams according to visibility"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    iP = bpy.props.IntProperty
+    fP = bpy.props.FloatProperty
+    fvP = bpy.props.FloatVectorProperty
+    ivP = bpy.props.IntVectorProperty
+    bP = bpy.props.BoolProperty
+    eP = bpy.props.EnumProperty
+    bvP = bpy.props.BoolVectorProperty
+    sP = bpy.props.StringProperty
+
+    # region SeamGen Properties
+    angular_resolution : ivP(
+        name = "Angular Resolution",
+        description = "Visibility resolution in number of raycasting points in full rotation",
+        default=(1, 4, 4),
+        min=2,
+        max=512,
+        size = 3
+        ) # type: ignore
+
+    dome : bP(
+        name = "Dome",
+        description = "Don't raycast from underneath object",
+        default = True
+        ) # type: ignore
+    
+    init_height_factor : fP(
+        name = "Height Factor",
+        description = "Height as factor times object's height",
+        default = 0.5,
+        min = 0,
+        max = 1
+        ) # type: ignore
+    
+    vis_threshold : fP(
+        name = "Visibility Threshold",
+        description = "Edges below this threshold will be marked as seams",
+        default = 0.5,
+        min = 0,
+        max = 1
+        ) # type: ignore
+    
+    angle_factor : fP(
+        name = "Concavity Influence",
+        description = "Influence of concavity on seam generation",
+        default = 1,
+        min = 0,
+        max = 1
+        ) # type: ignore
+
+    avg_angle_factor : fP(
+        name = "Average Concavity Influence",
+        description = "Influence of averaged area concavity on seam generation",
+        default = 0,
+        min = 0,
+        max = 1
+        ) # type: ignore
+
+    ao_factor : fP(
+        name = "AO Influence",
+        description = "Influence of ambient occlusion on seam generation",
+        default = 0,
+        min = 0,
+        max = 1
+        ) # type: ignore
+
+    ed_factor : fP(
+        name = "Edge Density Influence",
+        description = "Influence of edge density on seam generation",
+        default = 0,
+        min = 0,
+        max = 1
+        ) # type: ignore
+
+    no_rounds : iP(
+        name = "Iterations",
+        description = "Number of initial iterations",
+        default = 20,
+        min = 1,
+        max = 1000
+        ) # type: ignore
+
+    no_retries : iP(
+        name = "Max Retries",
+        description = "Maximum number of retry iterations",
+        default = 100,
+        min = 1,
+        max = 1000
+        ) # type: ignore
+
+    angle_thresh_start : fP(
+        name = "Min Angle Threshold",
+        description = "Initial angular threshold",
+        default = -50,
+        min = -180,
+        max = 180
+        ) # type: ignore
+
+    angle_thresh_end : fP(
+        name = "Max Angle Threshold",
+        description = "Maximum angular threshold",
+        default = -20,
+        min = -180,
+        max = 180
+        ) # type: ignore
+
+    clear_seam : bP(
+        name = "Clear Seams",
+        description = "Clear any existing seams",
+        default = True
+        ) # type: ignore
+
+    unwrap : bP(
+        name = "Unwrap",
+        description = "Run auto-unwrap. (Mainly to check if islands turn out as desired.)",
+        default = False
+        ) # type: ignore
+    # endregion
+
+    def execute(self, context):
+        props = context.scene.sloppy_props
+        bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        verbose = props.verbose
+
+        init_dist = max(bpy.context.active_object.dimensions) * 1.5
+        init_height = bpy.context.active_object.dimensions.z * self.init_height_factor
+        init_pov = mathutils.Vector((init_dist, 0.0, init_height))
+        curr_pov = init_pov
+        
+        attr_dict = [
+            {"name": "edge_vis", "type": "FLOAT", "domain": "EDGE", "layer": None},
+            {"name": "vert_vis", "type": "FLOAT", "domain": "POINT", "layer": None},
+            ]
+
+        for nam in attr_dict:
+            attr = props.find_or_add_attribute(nam["name"], nam["type"], nam["domain"])
+            nam["layer"] = props.get_attribute_layer(nam["name"], nam["type"], nam["domain"], bm)
+
+        edge_vis = props.get_dict_layer("edge_vis", attr_dict)
+        vert_vis = props.get_dict_layer("vert_vis", attr_dict)
+
+        y_rot_inc = 360 / (self.angular_resolution[1] - 1)
+        if self.dome == True:
+            y_rot_inc = 180 / (self.angular_resolution[1] - 1)
+        z_rot_inc = 360 / (self.angular_resolution[2])
+
+        max_iter = self.angular_resolution[1] * self.angular_resolution[2] * len(bm.verts)
+
+        iter = 0
+
+        for yi in range(self.angular_resolution[1]):
+            y_rot = mathutils.Euler((0,y_rot_inc*yi,0), 'XYZ')
+            y_rotated = init_pov.rotate(y_rot)
+            if y_rotated == None:
+                y_rotated = init_pov
+            for zi in range(self.angular_resolution[2]):
+                z_rot = mathutils.Euler((0,0,z_rot_inc*zi))
+                z_rotated = y_rotated.rotate(z_rot)
+                if z_rotated == None:
+                    z_rotated = y_rotated
+                curr_pov = z_rotated
+
+                for vert in bm.verts:
+                    percent_done = (iter/max_iter) * 100
+                    print(f"{percent_done} percent done")
+                    iter += 1
+                    vert[vert_vis] += 1
+                    vec = vert.co - curr_pov
+                    dir = vec.normalized()
+                    hit, hit_loc, hit_norm, hit_i, hit_o, hit_ab = bpy.context.scene.ray_cast(depsgraph, curr_pov, dir)
+                    if hit == True:
+                        if bm.faces[hit_i] not in vert.link_faces:
+                            vert[vert_vis] -= 1
+        
+        vis_div = self.angular_resolution[1] * self.angular_resolution[2]
+
+        bpy.context.active_object.data.update()
+
+        for vert in bm.verts:
+            vert[vert_vis] /= vis_div
+            print(f"Visibility for vert {vert.index}: {vert[vert_vis]}")
+
+        bpy.context.active_object.data.update()
+
+        for edge in bm.edges:
+            edge[edge_vis] = (edge.verts[0][vert_vis] + edge.verts[1][vert_vis]) / 2
+            print(f"Visibility for edge {edge.index}: {edge[edge_vis]}")
+
+        bpy.context.active_object.data.update()
+
+        if self.unwrap == True:
+            selected_before = []
             for face in bm.faces:
                 if face.select == True:
                     selected_before.append(face)

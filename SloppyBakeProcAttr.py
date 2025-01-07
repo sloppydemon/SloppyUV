@@ -4,6 +4,7 @@ import bmesh
 import math
 import mathutils
 
+# region ProcAttrBke Op
 class SloppyProcAttrBake(bpy.types.Operator):
     bl_idname = "operator.sloppy_proc_attr_bake"
     bl_label = "Bake Procedural Attributes"
@@ -63,7 +64,7 @@ class SloppyProcAttrBake(bpy.types.Operator):
         max_fthick = 0
         min_fthick = 100
 
-        # DISTANCE ALONG SEAM (+ 
+        # region DIST ALONG SEAM 
 
         along_edges = []
         along_faces = []
@@ -333,9 +334,9 @@ class SloppyProcAttrBake(bpy.types.Operator):
 
         max_face_index_sum = max(max_face_indices)
         max_distance_along_seam = max(distances_along_seams)
+        # endregion
 
-        # FACE THICKNESS
-
+        # region FACE THICKNESS
         bpy.context.active_object.data.update() 
 
         for v in bm.verts:
@@ -372,9 +373,9 @@ class SloppyProcAttrBake(bpy.types.Operator):
                 v[face_thickness] += thick
 
         bpy.context.active_object.data.update()
+        # endregion
 
-        # VERT THICKNESS + CURVATURE
-
+        # region VERT THICK + CURV
         for v in bm.verts:
             curv = 0
             for edge in v.link_edges:
@@ -417,8 +418,9 @@ class SloppyProcAttrBake(bpy.types.Operator):
 
         bpy.context.active_object.data.update() 
 
-        # DISTANCE FROM SEAM
+        # endregion
 
+        # region DIST FROM SEAM
         for v in bm.verts:
             v[seam_dist] = 0.0
             v[num_paths] = 0
@@ -437,9 +439,7 @@ class SloppyProcAttrBake(bpy.types.Operator):
                                 seed_verts.append(v)
                         done_loops.append(loop)
                         seam_loops.append(loop)
-
-
-                        
+         
         bpy.context.active_object.data.update()
 
         remain = len(bm.verts) - len(done_verts)
@@ -483,6 +483,7 @@ class SloppyProcAttrBake(bpy.types.Operator):
             remain = len(bm.verts) - len(done_verts)
             
             bpy.context.active_object.data.update()
+        # endregion
 
         print(f"Maximum distance from seam: {max_dist}. Maximum number of paths: {max_paths}")
         bpy.context.object["MaxDistanceFromSeam"] = max_dist
@@ -499,3 +500,120 @@ class SloppyProcAttrBake(bpy.types.Operator):
         bpy.context.active_object.data.update()
 
         return {"FINISHED"}
+# endregion
+
+# region Blur Attribute Op
+class SloppyBlurAttribute(bpy.types.Operator):
+    bl_idname = "operator.sloppy_attr_blur"
+    bl_label = "Blur Attribute"
+    bl_description = "Blur active attribute values"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    iP = bpy.props.IntProperty
+    fP = bpy.props.FloatProperty
+    fvP = bpy.props.FloatVectorProperty
+    bP = bpy.props.BoolProperty
+    eP = bpy.props.EnumProperty
+    bvP = bpy.props.BoolVectorProperty
+    sP = bpy.props.StringProperty
+
+    # region AttrBlur Properties
+    respect_islands : bP(
+        name = "Respect UV Islands",
+        description = "If true, only blur with elemeents within same UV island",
+        default = False
+        ) # type: ignore
+    # endregion
+    
+    def execute(self, context):
+        props = context.scene.sloppy_props
+        bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
+
+        active_attribute = bpy.context.active_object.data.attributes.active
+        new_attr_name = active_attribute.name + '_blur'
+        if '_blur' in active_attribute.name:
+            prev_blur_iter = active_attribute.name[-1]
+            if prev_blur_iter.isdigit() == True:
+                new_blur_iter = int(prev_blur_iter) + 1
+                new_attr_name = active_attribute.name + str(new_blur_iter)
+            else:
+                new_attr_name = active_attribute.name + '1'
+        new_attr_domain = active_attribute.domain
+        new_attr_type = active_attribute.data_type
+
+        if new_attr_domain == 'CORNER':
+            return {"CANCELLED"}
+
+        attr_dict = [
+            {"name" : active_attribute.name, "type":active_attribute.data_type, "domain":active_attribute.domain, "layer": None},
+            {"name" : new_attr_name, "type":new_attr_domain, "domain":new_attr_type, "layer": None},
+            ]
+        
+        for nam in attr_dict:
+            attr = props.find_or_add_attribute(nam["name"], nam["type"], nam["domain"])
+            nam["layer"] = props.get_attribute_layer(nam["name"], nam["type"], nam["domain"], bm)
+            
+        uv_layer = bm.loops.layers.uv.verify()
+
+        clean_attr = props.get_dict_layer(active_attribute.name, attr_dict)
+        blur_attr = props.get_dict_layer(new_attr_name, attr_dict)
+
+        bmi = []
+        if self.respect_islands == True:
+            bmi = bpy_extras.bmesh_utils.bmesh_linked_uv_islands(bm, uv_layer)
+        else:
+            bmi.append([i for i in bm.faces])
+        if props.verbose:
+            print(f"Number of islands: {len(bmi)}")
+
+        for island in bmi:
+            if new_attr_domain == 'FACE':
+                for face in island:
+                    done_i = [face.index]
+                    attr_base = face[clean_attr]
+                    for fv in face.verts:
+                        for fvf in fv.link_faces:
+                            if fvf.index not in done_i and fvf in island:
+                                done_i.append(fvf.index)
+                                attr_base += fvf[clean_attr]
+                    new_attr_calc = attr_base / len(done_i)
+                    face[blur_attr] = new_attr_calc
+            if new_attr_domain == 'EDGE' or new_attr_domain == 'POINT':
+                island_edges = []
+                for face in island:
+                    for fe in face.edges:
+                        if fe not in island_edges:
+                            island_edges.append(fe)
+                if new_attr_domain == 'EDGE':
+                    for edge in island_edges:
+                        done_i = [edge.index]
+                        attr_base = edge[clean_attr]
+                        for ev in edge.verts:
+                            for eve in ev.link_edges:
+                                if eve.index not in done_i and eve in island_edges:
+                                    done_i.append(eve.index)
+                                    attr_base += eve[clean_attr]
+                        new_attr_calc = attr_base / len(done_i)
+                        edge[blur_attr] = new_attr_calc
+                if new_attr_domain == 'POINT':
+                    island_verts = []
+                    for edge in island_edges:
+                        for ev in edge.verts:
+                            if ev not in island_verts:
+                                island_verts.append(ev)
+                    for vert in island_verts:
+                        done_i = [vert.index]
+                        attr_base = vert[clean_attr]
+                        for ve in vert.link_edges:
+                            if ve in island_edges:
+                                veov = ve.other_vert(vert)
+                                if veov.index not in done_i:
+                                    done_i.append(veov.index)
+                                    attr_base += veov[clean_attr]
+                        new_attr_calc = attr_base / len(done_i)
+                        vert[blur_attr] = new_attr_calc
+
+        bpy.context.active_object.data.update()
+
+        return {"FINISHED"}
+# endregion

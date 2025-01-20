@@ -2,6 +2,7 @@ import bpy
 import bmesh
 import mathutils
 import math
+import bl_math
 from bpy_extras import bmesh_utils
 
 props = bpy.context.scene.sloppy_props
@@ -145,9 +146,18 @@ for lvli, lvlsa in enumerate(lvls):
         props.find_or_add_attribute_other_obj('xmid', 'FLOAT_VECTOR', 'POINT', this_cut_o)
         props.find_or_add_attribute_other_obj('ymid', 'FLOAT_VECTOR', 'POINT', this_cut_o)
         props.find_or_add_attribute_other_obj('zmid', 'FLOAT_VECTOR', 'POINT', this_cut_o)
+        props.find_or_add_attribute_other_obj('norm_xmid', 'FLOAT_VECTOR', 'POINT', this_cut_o)
+        props.find_or_add_attribute_other_obj('norm_ymid', 'FLOAT_VECTOR', 'POINT', this_cut_o)
+        props.find_or_add_attribute_other_obj('norm_zmid', 'FLOAT_VECTOR', 'POINT', this_cut_o)
         props.find_or_add_attribute_other_obj('dist_x', 'FLOAT', 'POINT', this_cut_o)
         props.find_or_add_attribute_other_obj('dist_y', 'FLOAT', 'POINT', this_cut_o)
         props.find_or_add_attribute_other_obj('dist_z', 'FLOAT', 'POINT', this_cut_o)
+        props.find_or_add_attribute_other_obj('norm_pos_x', 'FLOAT', 'POINT', this_cut_o)
+        props.find_or_add_attribute_other_obj('norm_pos_y', 'FLOAT', 'POINT', this_cut_o)
+        props.find_or_add_attribute_other_obj('norm_pos_z', 'FLOAT', 'POINT', this_cut_o)
+        props.find_or_add_attribute_other_obj('norm_dist_x', 'FLOAT', 'POINT', this_cut_o)
+        props.find_or_add_attribute_other_obj('norm_dist_y', 'FLOAT', 'POINT', this_cut_o)
+        props.find_or_add_attribute_other_obj('norm_dist_z', 'FLOAT', 'POINT', this_cut_o)
         this_cut_o.select_set(True)
         lvl_cuts[lvli].append(this_cut_o)
 
@@ -302,13 +312,15 @@ if per_vert == True:
 else:
     
 
-    for obj,vec,lyr,mid,np,dst,ax,lvla,lvln,cbms,min,max,inc,bpbm,corna in zip(ol, olcovm, ollyr,olmid,olnp,oldist,olax,lvls,lvlns,cutbms,mins,maxs,incs,bpbms,corners):
+    for obj,vec,lyr,mid,np,dst,ax,lvla,lvln,cbms,dmin,dmax,inc,bpbm,corna in zip(ol, olcovm, ollyr,olmid,olnp,oldist,olax,lvls,lvlns,cutbms,mins,maxs,incs,bpbms,corners):
         current_vm = vec
         this_res = x_res
         if ax == 'y':
             this_res = y_res
         if ax == 'z':
             this_res = z_res
+        max_dim = max(dim_x, dim_y, dim_z)
+
         plane_vec = mathutils.Vector((1,1,1)) - vec
         last_mid = mathutils.Vector()
 
@@ -338,13 +350,22 @@ else:
 
         for cbm in cbms:
             this_mid_lyr = props.get_attribute_layer('xmid', 'FLOAT_VECTOR', 'POINT', cbm)
+            this_nmid_lyr = props.get_attribute_layer('norm_xmid', 'FLOAT_VECTOR', 'POINT', cbm)
             this_dist_lyr = props.get_attribute_layer('dist_x', 'FLOAT', 'POINT', cbm)
+            this_npx_lyr = props.get_attribute_layer('norm_pos_x', 'FLOAT', 'POINT', cbm)
+            this_npy_lyr = props.get_attribute_layer('norm_pos_y', 'FLOAT', 'POINT', cbm)
+            this_npz_lyr = props.get_attribute_layer('norm_pos_z', 'FLOAT', 'POINT', cbm)
+            this_nd_lyr = props.get_attribute_layer('norm_dist_x', 'FLOAT', 'POINT', cbm)
             if ax == 'y':
                 this_mid_lyr = props.get_attribute_layer('ymid', 'FLOAT_VECTOR', 'POINT', cbm)
+                this_nmid_lyr = props.get_attribute_layer('norm_ymid', 'FLOAT_VECTOR', 'POINT', cbm)
                 this_dist_lyr = props.get_attribute_layer('dist_y', 'FLOAT', 'POINT', cbm)
+                this_nd_lyr = props.get_attribute_layer('norm_dist_y', 'FLOAT', 'POINT', cbm)
             if ax == 'z':
                 this_mid_lyr = props.get_attribute_layer('zmid', 'FLOAT_VECTOR', 'POINT', cbm)
+                this_nmid_lyr = props.get_attribute_layer('norm_zmid', 'FLOAT_VECTOR', 'POINT', cbm)
                 this_dist_lyr = props.get_attribute_layer('dist_z', 'FLOAT', 'POINT', cbm)
+                this_nd_lyr = props.get_attribute_layer('norm_dist_z', 'FLOAT', 'POINT', cbm)
             for face in cbm.faces:
                 for fv in face.verts:
                     if use_ray == True:
@@ -360,6 +381,19 @@ else:
                     fvdist = fvec.length
                     fv[this_mid_lyr] = last_mid
                     fv[this_dist_lyr] = fvdist
+                    nmx = (last_mid.x - min_x)/dim_x
+                    nmy = (last_mid.y - min_y)/dim_y
+                    nmz = (last_mid.z - min_z)/dim_z
+                    fv[this_nmid_lyr] = mathutils.Vector((nmx,nmy,nmz))
+                    npx = (fv.co.x - min_x)/dim_x
+                    npy = (fv.co.y - min_y)/dim_y
+                    npz = (fv.co.z - min_z)/dim_z
+                    fv[this_npx_lyr] = npx
+                    fv[this_npy_lyr] = npy
+                    fv[this_npz_lyr] = npz
+                    fndvec = mathutils.Vector((npx,npy,npz)) - mathutils.Vector((nmx,nmy,nmz))
+                    fndist = fndvec.length
+                    fv[this_nd_lyr] = fndist
             if len(cbm.faces) < 1:
                 for vert in cbm.verts:
                     vert[this_mid_lyr] = vert.co
@@ -404,36 +438,37 @@ else:
                         bpl[uv_layer].uv.y = (uv_corners[bpvi][1] * uv_multiplier) + uv_y_add
                 last_face = nf
         
-    #     for lvl_cut_a in lvl_cuts:
-    #         for lvl_cut_o in lvl_cut_a:
-    #             lvl_cut_o.data.update()
+        for lvl_cut_a in lvl_cuts:
+            for lvl_cut_o in lvl_cut_a:
+                lvl_cut_o.data.update()
 
-    #     for bmov in bmo.verts:
-    #         effective_co = bmov.co * vec
-    #         cur_ax_val = bmov.co.x + bmo.co.y + bmo.co.z
-    #         above_or_below = False
-    #         if cur_ax_val < min:
-    #             bmov[lyr] = 0.0
-    #             bmov[np] = 0.0
-    #             above_or_below = True
-    #         if cur_ax_val > max:
-    #             bmov[lyr] = 1.0
-    #             bmov[np] = 1.0
-    #             above_or_below = True
-    #         if above_or_below == False:
-    #             for lvli, lvl in enumerate(lvla):
-    #                 if cur_ax_val > lvl and cur_ax_val < lvla[lvli + 1]:
-    #                     cur_alpha = (cur_ax_val - lvl) / inc
-    #                     new_vol = vol_lvis[lvli].lerp(vol_lvis[lvli + 1], cur_alpha)
-    #                     new_np = np[lvli].lerp(np[lvli + 1], cur_alpha)
-    #                     bmov[lyr] = new_vol
-    #                     bmov[np] = new_np
+        for bmov in bmo.verts:
+            effective_co = bmov.co * vec
+            cur_ax_val = effective_co.x + effective_co.y + effective_co.z
+            above_or_below = False
+            if cur_ax_val < dmin:
+                bmov[lyr] = 0.0
+                bmov[np] = 0.0
+                above_or_below = True
+            if cur_ax_val > dmax:
+                bmov[lyr] = 1.0
+                bmov[np] = 1.0
+                above_or_below = True
+            if above_or_below == False:
+                for lvli, lvl in enumerate(lvla):
+                    if cur_ax_val > lvl and cur_ax_val < lvla[lvli + 1]:
+                        cur_alpha = (cur_ax_val - lvl) / inc
+                        new_vol = bl_math.lerp(vol_lvls[lvli], vol_lvls[lvli + 1], cur_alpha)
+                        new_np = bl_math.lerp(lvln[lvli], lvln[lvli + 1], cur_alpha)
+                        print('Vert', bmov.index, 'is between', str(lvli), 'and', str(lvli + 1), 'at alpha', str(cur_alpha), 'with normalized position in', ax, '=', str(new_np))
+                        bmov[lyr] = new_vol
+                        bmov[np] = new_np
         
             
-    # for bmov in bmo.verts:
-    #     bmov[orig_co] = bmov.co
+    for bmov in bmo.verts:
+        bmov[orig_co] = bmov.co
     
-    # bpy.context.active_object.data.update()
+    bpy.context.active_object.data.update()
 
 for bake_plane in bake_planes:
     bake_plane.data.update()

@@ -84,6 +84,20 @@ class SloppyProperties(bpy.types.PropertyGroup):
                 attribute = dat.attributes.new(name=name, type=attr_type, domain=attr_domain)
         return attribute
     
+    def find_or_add_attribute_other_obj(self, name, attr_type, attr_domain, other_obj):
+        dat = other_obj.data
+        attribute = dat.attributes[0]
+        get_i = dat.attributes.find(name)
+        if get_i == -1:
+            attribute = dat.attributes.new(name=name, type=attr_type, domain=attr_domain)
+        else:
+            try:
+                attribute = dat.attributes[get_i]
+            except:
+                dat.update()
+                attribute = dat.attributes.new(name=name, type=attr_type, domain=attr_domain)
+        return attribute
+    
     def get_attribute_layer(self, name, attr_type, attr_domain, bmi):
             layer = None
             if attr_domain == "FACE":

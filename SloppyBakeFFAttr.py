@@ -118,15 +118,23 @@ olax = [
 ]
 
 axos = [None, None, None]
+vaxos = [None, None, None]
 bake_planes = [None, None, None]
 
 for axi, axis in enumerate(olax):
     this_axis_o = mo.copy()
     this_axis_o.data = mo.data.copy()
-    this_axis_o.name = mo.name + '_vol.' + axis
+    this_axis_o.name = mo.name + '_lvls.' + axis
     bpy.context.collection.objects.link(this_axis_o)
     this_axis_o.select_set(True)
     axos[axi] = this_axis_o
+
+    this_vaxis_o = mo.copy()
+    this_vaxis_o.data = mo.data.copy()
+    this_vaxis_o.name = mo.name + '_vol.' + axis
+    bpy.context.collection.objects.link(this_vaxis_o)
+    this_vaxis_o.select_set(True)
+    vaxos[axi] = this_vaxis_o
 
     this_bake_plane = bake_plane.copy()
     this_bake_plane.data = bake_plane.data.copy()
@@ -170,10 +178,20 @@ bmox = bmesh.from_edit_mesh(axos[0].data)
 bmoy = bmesh.from_edit_mesh(axos[1].data)
 bmoz = bmesh.from_edit_mesh(axos[2].data)
 
+bmvox = bmesh.from_edit_mesh(vaxos[0].data)
+bmvoy = bmesh.from_edit_mesh(vaxos[1].data)
+bmvoz = bmesh.from_edit_mesh(vaxos[2].data)
+
 ol = [
     bmox,
     bmoy,
     bmoz
+]
+
+olv = [
+    bmvox,
+    bmvoy,
+    bmvoz
 ]
 
 cutbms = [[],[],[]]
@@ -273,6 +291,26 @@ bmo.verts.ensure_lookup_table()
 bmo.edges.ensure_lookup_table()
 bmo.faces.ensure_lookup_table()
 
+bmo_flat_uv_xy = bmo.loops.layers.uv.new()
+bmo_flat_uv_yz = bmo.loops.layers.uv.new()
+bmo_flat_uv_zy = bmo.loops.layers.uv.new()
+
+for bmov in bmo.verts:
+    this_npx = (bmov.co.x - min_x) / dim_x
+    this_npy = (bmov.co.y - min_y) / dim_y
+    this_npz = (bmov.co.z - min_z) / dim_z
+    bmov[norm_pos_x] = this_npx
+    bmov[norm_pos_y] = this_npy
+    bmov[norm_pos_z] = this_npz
+
+    for loop in bmov.link_loops:
+        loop[bmo_flat_uv_xy].uv.x = this_npx
+        loop[bmo_flat_uv_xy].uv.y = this_npy
+        loop[bmo_flat_uv_yz].uv.x = this_npy
+        loop[bmo_flat_uv_yz].uv.y = this_npz
+        loop[bmo_flat_uv_zy].uv.x = this_npz
+        loop[bmo_flat_uv_zy].uv.y = this_npy
+
 if per_vert == True:
     for obj,vec,lyr,mid,ax in zip(ol, olcovm, ollyr,olmid,olax):
         ls = []
@@ -306,14 +344,37 @@ if per_vert == True:
             if hit:
                 last_mid = bmov.co.lerp(hit_loc, 0.5)
             print('Hit:', hit, 'Midpoint for vert', bmov.index, 'in', ax, 'plane: ', 'x:', last_mid.x, 'y:', last_mid.y, 'z:', last_mid.z)
-            bmov[mid] = last_mid
 
         bpy.context.active_object.data.update()
 else:
-    
-
-    for obj,vec,lyr,mid,np,dst,ax,lvla,lvln,cbms,dmin,dmax,inc,bpbm,corna in zip(ol, olcovm, ollyr,olmid,olnp,oldist,olax,lvls,lvlns,cutbms,mins,maxs,incs,bpbms,corners):
+    for obj,vobj, vec,lyr,mid,np,dst,ax,lvla,lvln,cbms,dmin,dmax,inc,bpbm,corna in zip(ol, olv, olcovm, ollyr,olmid,olnp,oldist,olax,lvls,lvlns,cutbms,mins,maxs,incs,bpbms,corners):
         current_vm = vec
+        plane_vec = mathutils.Vector((1,1,1)) - vec
+        
+        ls = []
+        for v in vobj.verts:
+            lsi = [v, v.co, v.index]
+            ls.append(lsi)
+        if ax == 'x':
+            ls.sort(key = vec_sort_x, reverse=True)
+        if ax == 'y':
+            ls.sort(key = vec_sort_y, reverse=True)
+        if ax == 'z':
+            ls.sort(key = vec_sort_z, reverse=True)
+
+        last_mid = mathutils.Vector((0,0,0))
+
+        for vert in ls:
+            print('Before cut:', len(vobj.verts), len([v for v in vobj.verts if v.is_valid]), vert[1] * vec, 'axis: ', ax)
+            cut, rest = bmesh.ops.bisect_plane(vobj, geom=vobj.verts[:] + vobj.edges[:] + vobj.faces[:], dist=0.0001, plane_co=vert[1] * vec, plane_no=vec, use_snap_center=False, clear_outer=True, clear_inner=False)
+            new_faces = bmesh.ops.holes_fill(vobj, edges=vobj.edges)
+            vol = vol_calc(vobj.calc_volume(), bmo_vol)
+            bmo.verts[vert[2]][lyr] = vol
+            print('After cut:',len(vobj.verts), len([v for v in vobj.verts if v.is_valid]), 'Number of new faces: ', len(new_faces['faces']), 'New volume: ', vol)
+        
+        for bmov in bmo.verts:
+            bmov[orig_co] = bmov.co
+        
         this_res = x_res
         if ax == 'y':
             this_res = y_res
@@ -321,7 +382,6 @@ else:
             this_res = z_res
         max_dim = max(dim_x, dim_y, dim_z)
 
-        plane_vec = mathutils.Vector((1,1,1)) - vec
         last_mid = mathutils.Vector()
 
         vol_lvls = []
@@ -330,19 +390,28 @@ else:
         print(lvla_rng)
         lvla_rng.sort(reverse = True)
 
+        lvl_vol_map = []
+
         for ri in lvla_rng:
             lvl = lvla[ri]
             cbm = cbms[ri]
+            
             print('Before cut:', len(obj.verts), len([v for v in obj.verts if v.is_valid]), 'level: ', lvl, ' in axis: ', ax)
-            vol = vol_calc(obj.calc_volume(), bmo_vol)
-            vol_lvls.append(vol)
+            
             plane_pos = vec * lvl
             cut, rest = bmesh.ops.bisect_plane(obj, geom=obj.verts[:] + obj.edges[:] + obj.faces[:], dist=0.0001, plane_co=plane_pos, plane_no=vec, use_snap_center=False, clear_outer=True, clear_inner=False)
             cut_cut, cut_rest = bmesh.ops.bisect_plane(cbm, geom=cbm.verts[:] + cbm.edges[:] + cbm.faces[:], dist=0.0001, plane_co=plane_pos, plane_no=vec, use_snap_center=False, clear_outer=True, clear_inner=True)
             if use_ray == False:
                 cut_new_faces = bmesh.ops.holes_fill(cbm, edges=cbm.edges)
                 new_faces = bmesh.ops.holes_fill(obj, edges=obj.edges)
-            print('After cut:',len(obj.verts), len([v for v in obj.verts if v.is_valid]), 'Number of new faces: ', len(new_faces['faces']), 'Last volume: ', vol)
+            
+            vol = vol_calc(obj.calc_volume(), bmo_vol)
+
+            vol_lvls.append(vol)
+            lvl_np = lvln[ri]
+            lvl_vol_item = [lvl, vol, lvl_np]
+            lvl_vol_map.append(lvl_vol_item)
+            print('After cut:',len(obj.verts), len([v for v in obj.verts if v.is_valid]), 'Number of new faces: ', len(new_faces['faces']), 'New volume: ', vol)
         
         vol_lvls.sort(reverse=True)
 
@@ -442,31 +511,54 @@ else:
             for lvl_cut_o in lvl_cut_a:
                 lvl_cut_o.data.update()
 
-        for bmov in bmo.verts:
-            effective_co = bmov.co * vec
-            cur_ax_val = effective_co.x + effective_co.y + effective_co.z
-            above_or_below = False
-            if cur_ax_val < dmin:
-                bmov[lyr] = 0.0
-                bmov[np] = 0.0
-                above_or_below = True
-            if cur_ax_val > dmax:
-                bmov[lyr] = 1.0
-                bmov[np] = 1.0
-                above_or_below = True
-            if above_or_below == False:
-                for lvli, lvl in enumerate(lvla):
-                    if cur_ax_val > lvl and cur_ax_val < lvla[lvli + 1]:
-                        cur_alpha = (cur_ax_val - lvl) / inc
-                        new_vol = bl_math.lerp(vol_lvls[lvli], vol_lvls[lvli + 1], cur_alpha)
-                        new_np = bl_math.lerp(lvln[lvli], lvln[lvli + 1], cur_alpha)
-                        print('Vert', bmov.index, 'is between', str(lvli), 'and', str(lvli + 1), 'at alpha', str(cur_alpha), 'with normalized position in', ax, '=', str(new_np))
-                        bmov[lyr] = new_vol
-                        bmov[np] = new_np
+        
+
+        # for bmov in bmo.verts:
+        #     effective_co = bmov.co * vec
+        #     cur_ax_val = effective_co.x + effective_co.y + effective_co.z
+        #     above_or_below = False
+        #     if cur_ax_val <= dmin:
+        #         bmov[lyr] = 0.0
+        #         bmov[np] = 0.0
+        #         above_or_below = True
+        #         print('Vert', bmov.index, 'is below bounds in axis ', ax)
+        #     if cur_ax_val >= dmax:
+        #         bmov[lyr] = 1.0
+        #         bmov[np] = 1.0
+        #         print('Vert', bmov.index, 'is above bounds in axis ', ax)
+        #         above_or_below = True
+        #     if above_or_below == False:
+        #         for lvi, lv in enumerate(lvl_vol_map):
+        #             # print(ax, lvli, lvla[lvli], vol_lvls[lvli])
+        #             this_lvl = lvl_vol_map[lvi][0]
+        #             this_vol = lvl_vol_map[lvi][1]
+        #             this_np = lvl_vol_map[lvi][2]
+        #             below_lvl = 0.0
+        #             try:
+        #                 below_lvl = lvl_vol_map[lvi + 1][0]
+        #             except:
+        #                 pass
+        #             below_vol = 0.0
+        #             try:
+        #                 below_vol = lvl_vol_map[lvi + 1][1]
+        #             except:
+        #                 pass
+        #             bwloe_np = 0.0
+        #             try:
+        #                 below_np = lvl_vol_map[lvi + 1][2]
+        #             except:
+        #                 pass
+        #             if cur_ax_val < this_lvl and cur_ax_val > below_lvl:
+        #                 cur_alpha = (below_lvl - cur_ax_val) / inc
+        #                 new_vol = bl_math.lerp(this_vol, below_vol, cur_alpha)
+        #                 new_np = bl_math.lerp(this_np, below_np, cur_alpha)
+        #                 # print('Vert', bmov.index, 'is between', str(lvli), 'and', str(lvli + 1), 'at alpha', str(cur_alpha), 'with normalized position in', ax, '=', str(new_np))
+        #                 bmov[lyr] = new_vol
+        #                 bmov[np] = new_np
         
             
-    for bmov in bmo.verts:
-        bmov[orig_co] = bmov.co
+    # for bmov in bmo.verts:
+    #     bmov[orig_co] = bmov.co
     
     bpy.context.active_object.data.update()
 

@@ -157,6 +157,9 @@ def vec_sort_y(e):
 def vec_sort_z(e):
     return e[1].z
 
+def dist_sort(e):
+    return e[1]
+
 def vol_calc(this_volume, full_volume):
     if this_volume > 0:
         vol_fac = this_volume / full_volume
@@ -293,6 +296,7 @@ if per_vert == True:
         last_mid = ls[0][1]
         hl_a = ls[0][1]
         hl_b = ls[0][1]
+        hl_c = ls[0][1]
 
         for vert in ls:
             print('Before cut:', len([v for v in obj.verts if v.is_valid]), vert[1] * vec, 'axis:', ax)
@@ -309,14 +313,39 @@ if per_vert == True:
             inwards_dir_a = inwards_vec_a.normalized()
             inwards_vec_b = inwards * ray_vec_b
             inwards_dir_b = inwards_vec_b.normalized()
+            inwards_vec_c = inwards * plane_vec
+            inwards_dir_c = inwards_vec_c.normalized()
             hit_a, hit_a_loc, hit_a_norm, hit_a_i, hit_a_o, hit_a_ab = bpy.context.scene.ray_cast(depsgraph, bmov.co + (inwards*0.002), inwards_dir_a)
             if hit_a:
                 hl_a = hit_a_loc
+            else:
+                nuhl_a = (hl_a * plane_vec) + (bmov.co * vec)
+                hl_a = nuhl_a
             hit_b, hit_b_loc, hit_b_norm, hit_b_i, hit_b_o, hit_b_ab = bpy.context.scene.ray_cast(depsgraph, bmov.co + (inwards*0.002), inwards_dir_b)
             if hit_b:
                 hl_b = hit_b_loc
-            avg_hit_loc = hl_a.lerp(hl_b, 0.5)
-            last_mid = bmov.co.lerp(avg_hit_loc, 0.5)
+            else:
+                nuhl_b = (hl_b * plane_vec) + (bmov.co * vec)
+                hl_b = nuhl_b
+            hit_c, hit_c_loc, hit_c_norm, hit_c_i, hit_c_o, hit_c_ab = bpy.context.scene.ray_cast(depsgraph, bmov.co + (inwards*0.002), inwards_dir_c)
+            if hit_c:
+                hl_c = hit_c_loc
+            else:
+                nuhl_c = (hl_c * plane_vec) + (bmov.co * vec)
+                hl_c = nuhl_c
+
+            sort_hits = [[hl_a], [hl_b], [hl_c]]
+
+            for shi, sh in enumerate(sort_hits):
+                sh_vec = sh[0] - bmov.co
+                sh_len = sh_vec.length
+                sort_hits[shi].append(sh_vec.length)
+
+            sort_hits.sort(key = dist_sort)
+
+            # avg_hl = (hl_a + hl_b + hl_c) / 3
+            avg_hl = hl_a.lerp(hl_b, 0.5)
+            last_mid = bmov.co.lerp(avg_hl, 0.5)
             fvec = bmov.co - last_mid
             fvdist = fvec.length
             bmov[mid] = last_mid
@@ -369,17 +398,19 @@ if per_vert == True:
             nmid_str = f'{nmid_x_str} {nmid_y_str} {nmid_z_str}'
             pos_str = f'{pos_x_str} {pos_y_str} {pos_z_str}'
             npos_str = f'{npos_x_str} {npos_y_str} {npos_z_str}'
-            if hit_a or hit_b:
+            if hit_a or hit_b or hit_c:
                 print('Raycasting inwards from vertex', bmov.index, 'in axis', ax, ': Hit!')
                 if hit_a:
                     print('Hit object A:', hit_a_o.name)
                 if hit_b:
                     print('Hit object B:', hit_b_o.name)
+                if hit_c:
+                    print('Hit object C:', hit_c_o.name)
                 print(v_str.ljust(col_len_a) + 'Position:'.center(col_len_bc) + '     ' +  'Midpoint:'.center(col_len_bc) + 'Distance:'.rjust(col_len_d))
                 print(of_str.ljust(col_len_a) + axis_str.center(col_len_bc) + '   | ' + axis_str.center(col_len_bc))
                 print('World:'.ljust(col_len_a) + pos_str.center(col_len_bc) + '   | ' + mid_str.center(col_len_bc) + dist_str.rjust(col_len_d))
                 print('Normalized:'.ljust(col_len_a) + npos_str.center(col_len_bc) + '   | ' + nmid_str.center(col_len_bc) + ndist_str.rjust(col_len_d))
-            if not hit_a and not hit_b:
+            if not hit_a and not hit_b and not hit_c:
                 print('Raycasting inwards from ', bmov.index, ' in axis ', ax, ': No hit.') 
 
         bpy.context.active_object.data.update()

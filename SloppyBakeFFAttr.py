@@ -411,15 +411,17 @@ if per_vert == False:
             # rest_cut, rest_rest = bmesh.ops.bisect_plane(rbm, geom=rbm.verts[:] + rbm.edges[:] + rbm.faces[:], dist=0.0001, plane_co=plane_pos, plane_no=vec, use_snap_center=False, clear_outer=False, clear_inner=False)
             ccut = bmesh.ops.bisect_plane(cbm, geom=cbm.verts[:] + cbm.edges[:] + cbm.faces[:], dist=0.0001, plane_co=plane_pos, plane_no=vec, use_snap_center=False, clear_outer=True, clear_inner=True)
             cut_verts = [i for i in ccut['geom_cut'] if i in cbm.verts]
+            cut_edges = [i for i in ccut['geom_cut'] if i in cbm.edges]
             extruded = bmesh.ops.extrude_edge_only(cbm, edges=cbm.edges)
             new_verts = [i for i in extruded['geom'] if i in cbm.verts and i not in cut_verts]
+            new_edges = [i for i in extruded['geom'] if i in cbm.edges and i not in cut_edges]
             new_faces = [i for i in extruded['geom'] if i in cbm.faces]
 
             for nv in new_verts:
                 nuco = nv[this_cmid] * plane_vec + (nv.co * vec)
                 nv.co = nuco
             
-            avg_dist = 0.5
+            avg_dist = 1.0
             for nv in new_verts:
                 avg_dist += nv[this_cdist]
             if len(new_verts) > 0:
@@ -427,7 +429,9 @@ if per_vert == False:
             else:
                 avg_dist = 0.05
 
-            bmesh.ops.remove_doubles(cbm, verts=new_verts, dist=avg_dist)
+            # bmesh.ops.holes_fill(cbm, edges=new_edges)
+
+            # bmesh.ops.remove_doubles(cbm, verts=new_verts, dist=0.01)
             # if use_ray == False:
             #     cut_new_faces = bmesh.ops.holes_fill(cbm, edges=cbm.edges)
             #     new_faces = bmesh.ops.holes_fill(obj, edges=obj.edges)

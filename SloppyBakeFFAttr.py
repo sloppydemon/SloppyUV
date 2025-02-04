@@ -10,7 +10,7 @@ props = bpy.context.scene.sloppy_props
 depsgraph = bpy.context.evaluated_depsgraph_get()
 
 per_vert = False
-use_ray = False
+# use_ray = False
 
 x_res = 8
 y_res = 8
@@ -120,6 +120,7 @@ olax = [
 axos = [None, None, None]
 vaxos = [None, None, None]
 bake_planes = [None, None, None]
+bake_plane_bases = [None, None, None]
 
 for axi, axis in enumerate(olax):
     this_axis_o = mo.copy()
@@ -142,6 +143,13 @@ for axi, axis in enumerate(olax):
     bpy.context.collection.objects.link(this_bake_plane)
     this_bake_plane.select_set(True)
     bake_planes[axi] = this_bake_plane
+
+    this_bake_plane_base = bake_plane.copy()
+    this_bake_plane_base.data = bake_plane.data.copy()
+    this_bake_plane_base.name = mo.name + '_basePlane.' + axis
+    bpy.context.collection.objects.link(this_bake_plane_base)
+    this_bake_plane_base.select_set(True)
+    bake_plane_bases[axi] = this_bake_plane_base
 
 lvl_cuts = [[],[],[]]
 
@@ -197,15 +205,19 @@ olv = [
 cutbms = [[],[],[]]
 
 for lvl_cut_i, lvl_cut_a in enumerate(lvl_cuts):
-    for cut_o in lvl_cut_a:
+    for cut_i, cut_o in enumerate(lvl_cut_a):
         lvl_cut_bm = bmesh.from_edit_mesh(cut_o.data)
         cutbms[lvl_cut_i].append(lvl_cut_bm)
 
 bpbms = []
+bpbbms = []
 
 for bp in  bake_planes:
     bake_plane_bm = bmesh.from_edit_mesh(bp.data)
     bpbms.append(bake_plane_bm)
+for bpb in  bake_plane_bases:
+    bake_plane_base_bm = bmesh.from_edit_mesh(bpb.data)
+    bpbbms.append(bake_plane_base_bm)
 
 olcovm = [
     mathutils.Vector((1,0,0)),
@@ -236,12 +248,18 @@ attr_dict = [
     {"name": "zmid", "type": "FLOAT_VECTOR", "domain": "POINT", "layer": None},
     {"name": "xmid", "type": "FLOAT_VECTOR", "domain": "POINT", "layer": None},
     {"name": "ymid", "type": "FLOAT_VECTOR", "domain": "POINT", "layer": None},
+    {"name": "nzmid", "type": "FLOAT_VECTOR", "domain": "POINT", "layer": None},
+    {"name": "nxmid", "type": "FLOAT_VECTOR", "domain": "POINT", "layer": None},
+    {"name": "nymid", "type": "FLOAT_VECTOR", "domain": "POINT", "layer": None},
     {"name": "dist_x", "type": "FLOAT", "domain": "POINT", "layer": None},
     {"name": "dist_y", "type": "FLOAT", "domain": "POINT", "layer": None},
     {"name": "dist_z", "type": "FLOAT", "domain": "POINT", "layer": None},
     {"name": "norm_pos_x", "type": "FLOAT", "domain": "POINT", "layer": None},
     {"name": "norm_pos_y", "type": "FLOAT", "domain": "POINT", "layer": None},
     {"name": "norm_pos_z", "type": "FLOAT", "domain": "POINT", "layer": None},
+    {"name": "norm_dist_x", "type": "FLOAT", "domain": "POINT", "layer": None},
+    {"name": "norm_dist_y", "type": "FLOAT", "domain": "POINT", "layer": None},
+    {"name": "norm_dist_z", "type": "FLOAT", "domain": "POINT", "layer": None},
     {"name": "orig_co", "type": "FLOAT_VECTOR", "domain": "POINT", "layer": None}
     ]
 
@@ -255,9 +273,15 @@ volz = props.get_dict_layer("volz", attr_dict)
 zmid = props.get_dict_layer("zmid", attr_dict)
 xmid = props.get_dict_layer("xmid", attr_dict)
 ymid = props.get_dict_layer("ymid", attr_dict)
+nzmid = props.get_dict_layer("nzmid", attr_dict)
+nxmid = props.get_dict_layer("nxmid", attr_dict)
+nymid = props.get_dict_layer("nymid", attr_dict)
 dist_x = props.get_dict_layer("dist_x", attr_dict)
 dist_y = props.get_dict_layer("dist_y", attr_dict)
 dist_z = props.get_dict_layer("dist_z", attr_dict)
+norm_dist_x = props.get_dict_layer("norm_dist_x", attr_dict)
+norm_dist_y = props.get_dict_layer("norm_dist_y", attr_dict)
+norm_dist_z = props.get_dict_layer("norm_dist_z", attr_dict)
 norm_pos_x = props.get_dict_layer("norm_pos_x", attr_dict)
 norm_pos_y = props.get_dict_layer("norm_pos_y", attr_dict)
 norm_pos_z = props.get_dict_layer("norm_pos_z", attr_dict)
@@ -275,10 +299,22 @@ olmid = [
     zmid
 ]
 
+olnmid = [
+    nxmid,
+    nymid,
+    nzmid
+]
+
 oldist = [
     dist_x,
     dist_y,
     dist_z
+]
+
+olndist = [
+    norm_dist_x,
+    norm_dist_y,
+    norm_dist_z
 ]
 
 olnp = [
@@ -311,43 +347,8 @@ for bmov in bmo.verts:
         loop[bmo_flat_uv_zy].uv.x = this_npz
         loop[bmo_flat_uv_zy].uv.y = this_npy
 
-if per_vert == True:
-    for obj,vec,lyr,mid,ax in zip(ol, olcovm, ollyr,olmid,olax):
-        ls = []
-        for v in obj.verts:
-            lsi = [v, v.co, v.index]
-            ls.append(lsi)
-        current_vm = vec
-        plane_vec = mathutils.Vector((1,1,1)) - vec
-        if ax == 'x':
-            ls.sort(key = vec_sort_x, reverse=True)
-        if ax == 'y':
-            ls.sort(key = vec_sort_y, reverse=True)
-        if ax == 'z':
-            ls.sort(key = vec_sort_z, reverse=True)
-        last_mid = ls[0][1]
-
-        for vert in ls:
-            print('Before cut:', len(obj.verts), len([v for v in obj.verts if v.is_valid]), vert[1] * vec, 'axis: ', ax)
-            vol = vol_calc(obj.calc_volume(), bmo_vol)
-            bmo.verts[vert[2]][lyr] = vol
-            cut, rest = bmesh.ops.bisect_plane(obj, geom=obj.verts[:] + obj.edges[:] + obj.faces[:], dist=0.0001, plane_co=vert[1] * vec, plane_no=vec, use_snap_center=False, clear_outer=True, clear_inner=False)
-            new_faces = bmesh.ops.holes_fill(obj, edges=obj.edges)
-            print('After cut:',len(obj.verts), len([v for v in obj.verts if v.is_valid]), 'Number of new faces: ', len(new_faces['faces']), 'New volume: ', vol)
-        
-        for bmov in bmo.verts:
-            bmov[orig_co] = bmov.co
-            inwards = -bmov.normal
-            inwards_vec = inwards * plane_vec
-            inwards_dir = inwards_vec.normalized()
-            hit, hit_loc, hit_norm, hit_i, hit_o, hit_ab = bpy.context.scene.ray_cast(depsgraph, bmov.co + (inwards*0.01), inwards_dir)
-            if hit:
-                last_mid = bmov.co.lerp(hit_loc, 0.5)
-            print('Hit:', hit, 'Midpoint for vert', bmov.index, 'in', ax, 'plane: ', 'x:', last_mid.x, 'y:', last_mid.y, 'z:', last_mid.z)
-
-        bpy.context.active_object.data.update()
-else:
-    for obj,vobj, vec,lyr,mid,np,dst,ax,lvla,lvln,cbms,dmin,dmax,inc,bpbm,corna in zip(ol, olv, olcovm, ollyr,olmid,olnp,oldist,olax,lvls,lvlns,cutbms,mins,maxs,incs,bpbms,corners):
+if per_vert == False:
+    for obj,vobj, vec,lyr,mid,np,dst,ax,lvla,lvln,cbms,dmin,dmax,inc,bpbm,bpbbm,corna in zip(ol, olv, olcovm, ollyr,olmid,olnp,oldist,olax,lvls,lvlns,cutbms,mins,maxs,incs,bpbms,bpbbms,corners):
         current_vm = vec
         plane_vec = mathutils.Vector((1,1,1)) - vec
         
@@ -364,17 +365,6 @@ else:
 
         last_mid = mathutils.Vector((0,0,0))
 
-        for vert in ls:
-            print('Before cut:', len(vobj.verts), len([v for v in vobj.verts if v.is_valid]), vert[1] * vec, 'axis: ', ax)
-            cut, rest = bmesh.ops.bisect_plane(vobj, geom=vobj.verts[:] + vobj.edges[:] + vobj.faces[:], dist=0.0001, plane_co=vert[1] * vec, plane_no=vec, use_snap_center=False, clear_outer=True, clear_inner=False)
-            new_faces = bmesh.ops.holes_fill(vobj, edges=vobj.edges)
-            vol = vol_calc(vobj.calc_volume(), bmo_vol)
-            bmo.verts[vert[2]][lyr] = vol
-            print('After cut:',len(vobj.verts), len([v for v in vobj.verts if v.is_valid]), 'Number of new faces: ', len(new_faces['faces']), 'New volume: ', vol)
-        
-        for bmov in bmo.verts:
-            bmov[orig_co] = bmov.co
-        
         this_res = x_res
         if ax == 'y':
             this_res = y_res
@@ -384,129 +374,204 @@ else:
 
         last_mid = mathutils.Vector()
 
-        vol_lvls = []
+        # vol_lvls = []
 
         lvla_rng = [i for i in range(len(lvla))]
         print(lvla_rng)
         lvla_rng.sort(reverse = True)
 
-        lvl_vol_map = []
+        # lvl_vol_map = []
+
+        ocut_geo = []
 
         for ri in lvla_rng:
             lvl = lvla[ri]
             cbm = cbms[ri]
+
+            this_cmid = props.get_attribute_layer('xmid', 'FLOAT_VECTOR', 'POINT', cbm)
+            this_cdist = props.get_attribute_layer('dist_x', 'FLOAT', 'POINT', cbm)
+            this_oco = props.get_attribute_layer('orig_co', 'FLOAT_VECTOR', 'POINT', cbm)
+            if ax == 'y':
+                this_cmid = props.get_attribute_layer('ymid', 'FLOAT_VECTOR', 'POINT', cbm)
+                this_cdist = props.get_attribute_layer('dist_y', 'FLOAT', 'POINT', cbm)
+            if ax == 'z':
+                this_cmid = props.get_attribute_layer('zmid', 'FLOAT_VECTOR', 'POINT', cbm)
+                this_cdist = props.get_attribute_layer('dist_z', 'FLOAT', 'POINT', cbm)
             
-            print('Before cut:', len(obj.verts), len([v for v in obj.verts if v.is_valid]), 'level: ', lvl, ' in axis: ', ax)
+            print('Before cut:', len([v for v in obj.verts if v.is_valid]), 'level: ', lvl, ' in axis: ', ax)
             
             plane_pos = vec * lvl
-            cut, rest = bmesh.ops.bisect_plane(obj, geom=obj.verts[:] + obj.edges[:] + obj.faces[:], dist=0.0001, plane_co=plane_pos, plane_no=vec, use_snap_center=False, clear_outer=True, clear_inner=False)
-            cut_cut, cut_rest = bmesh.ops.bisect_plane(cbm, geom=cbm.verts[:] + cbm.edges[:] + cbm.faces[:], dist=0.0001, plane_co=plane_pos, plane_no=vec, use_snap_center=False, clear_outer=True, clear_inner=True)
-            if use_ray == False:
-                cut_new_faces = bmesh.ops.holes_fill(cbm, edges=cbm.edges)
-                new_faces = bmesh.ops.holes_fill(obj, edges=obj.edges)
-            
-            vol = vol_calc(obj.calc_volume(), bmo_vol)
+            ocut = bmesh.ops.bisect_plane(obj, geom=obj.verts[:] + obj.edges[:] + obj.faces[:], dist=0.0001, plane_co=plane_pos, plane_no=vec, use_snap_center=False, clear_outer=False, clear_inner=False)
+            for element in ocut['geom_cut']:
+                if element not in ocut_geo:
+                    ocut_geo.append(element)
+            rest_verts = [i for i in ocut['geom'] if i in obj.verts and i not in ocut['geom_cut']]
+            rest_edges = [i for i in ocut['geom'] if i in obj.edges and i not in ocut['geom_cut']]
+            rest_faces = [i for i in ocut['geom'] if i in obj.faces and i not in ocut['geom_cut']]
+            # rest_cut, rest_rest = bmesh.ops.bisect_plane(rbm, geom=rbm.verts[:] + rbm.edges[:] + rbm.faces[:], dist=0.0001, plane_co=plane_pos, plane_no=vec, use_snap_center=False, clear_outer=False, clear_inner=False)
+            ccut = bmesh.ops.bisect_plane(cbm, geom=cbm.verts[:] + cbm.edges[:] + cbm.faces[:], dist=0.0001, plane_co=plane_pos, plane_no=vec, use_snap_center=False, clear_outer=True, clear_inner=True)
+            cut_verts = [i for i in ccut['geom_cut'] if i in cbm.verts]
+            extruded = bmesh.ops.extrude_edge_only(cbm, edges=cbm.edges)
+            new_verts = [i for i in extruded['geom'] if i in cbm.verts and i not in cut_verts]
+            new_faces = [i for i in extruded['geom'] if i in cbm.faces]
 
-            vol_lvls.append(vol)
-            lvl_np = lvln[ri]
-            lvl_vol_item = [lvl, vol, lvl_np]
-            lvl_vol_map.append(lvl_vol_item)
-            print('After cut:',len(obj.verts), len([v for v in obj.verts if v.is_valid]), 'Number of new faces: ', len(new_faces['faces']), 'New volume: ', vol)
-        
-        vol_lvls.sort(reverse=True)
+            for nv in new_verts:
+                nuco = nv[this_cmid] * plane_vec + (nv.co * vec)
+                nv.co = nuco
+            
+            avg_dist = 0.5
+            for nv in new_verts:
+                avg_dist += nv[this_cdist]
+            if len(new_verts) > 0:
+                avg_dist /= len(new_verts)
+            else:
+                avg_dist = 0.05
+
+            bmesh.ops.remove_doubles(cbm, verts=new_verts, dist=avg_dist)
+            # if use_ray == False:
+            #     cut_new_faces = bmesh.ops.holes_fill(cbm, edges=cbm.edges)
+            #     new_faces = bmesh.ops.holes_fill(obj, edges=obj.edges)
+
+            # cut_cut, cut_rest = bmesh.ops.bisect_plane(cbm, geom=cbm.verts[:] + cbm.edges[:] + cbm.faces[:], dist=0.0001, plane_co=plane_pos, plane_no=vec, use_snap_center=False, clear_outer=True, clear_inner=True)
+            
+            # vol = vol_calc(obj.calc_volume(), bmo_vol)
+
+            # vol_lvls.append(vol)
+            # lvl_np = lvln[ri]
+            # lvl_vol_item = [lvl, vol, lvl_np]
+            # lvl_vol_map.append(lvl_vol_item)
+            # vol_str = '{:.4f}'.format(vol)
+            print('After cut:',len([v for v in obj.verts if v.is_valid]), 'Number of new faces:', len(new_faces), 'Avg. distance to midpoint:', avg_dist)
+
+        rest_verts = [i for i in obj.verts if i not in ocut_geo]
+        rest_edges = [i for i in obj.edges if i not in ocut_geo]
+        rest_faces = [i for i in obj.faces if i not in ocut_geo]
+        bmesh.ops.dissolve_edges(obj, edges=rest_edges, use_verts=False,use_face_split=True)
+
+        # vol_lvls.sort(reverse=True)
 
         # obj.data.update()
-
-        for cbm in cbms:
-            this_mid_lyr = props.get_attribute_layer('xmid', 'FLOAT_VECTOR', 'POINT', cbm)
-            this_nmid_lyr = props.get_attribute_layer('norm_xmid', 'FLOAT_VECTOR', 'POINT', cbm)
-            this_dist_lyr = props.get_attribute_layer('dist_x', 'FLOAT', 'POINT', cbm)
-            this_npx_lyr = props.get_attribute_layer('norm_pos_x', 'FLOAT', 'POINT', cbm)
-            this_npy_lyr = props.get_attribute_layer('norm_pos_y', 'FLOAT', 'POINT', cbm)
-            this_npz_lyr = props.get_attribute_layer('norm_pos_z', 'FLOAT', 'POINT', cbm)
-            this_nd_lyr = props.get_attribute_layer('norm_dist_x', 'FLOAT', 'POINT', cbm)
-            if ax == 'y':
-                this_mid_lyr = props.get_attribute_layer('ymid', 'FLOAT_VECTOR', 'POINT', cbm)
-                this_nmid_lyr = props.get_attribute_layer('norm_ymid', 'FLOAT_VECTOR', 'POINT', cbm)
-                this_dist_lyr = props.get_attribute_layer('dist_y', 'FLOAT', 'POINT', cbm)
-                this_nd_lyr = props.get_attribute_layer('norm_dist_y', 'FLOAT', 'POINT', cbm)
-            if ax == 'z':
-                this_mid_lyr = props.get_attribute_layer('zmid', 'FLOAT_VECTOR', 'POINT', cbm)
-                this_nmid_lyr = props.get_attribute_layer('norm_zmid', 'FLOAT_VECTOR', 'POINT', cbm)
-                this_dist_lyr = props.get_attribute_layer('dist_z', 'FLOAT', 'POINT', cbm)
-                this_nd_lyr = props.get_attribute_layer('norm_dist_z', 'FLOAT', 'POINT', cbm)
-            for face in cbm.faces:
-                for fv in face.verts:
-                    if use_ray == True:
-                        inwards = -fv.normal
-                        inwards_vec = inwards * plane_vec
-                        inwards_dir = inwards_vec.normalized()
-                        hit, hit_loc, hit_norm, hit_i, hit_o, hit_ab = bpy.context.scene.ray_cast(depsgraph, fv.co + (inwards*0.01), inwards_dir)
-                        if hit:
-                            last_mid = fv.co.lerp(hit_loc, 0.5)
-                    else:
-                        last_mid = face.calc_center_median_weighted()
-                    fvec = fv.co - last_mid
-                    fvdist = fvec.length
-                    fv[this_mid_lyr] = last_mid
-                    fv[this_dist_lyr] = fvdist
-                    nmx = (last_mid.x - min_x)/dim_x
-                    nmy = (last_mid.y - min_y)/dim_y
-                    nmz = (last_mid.z - min_z)/dim_z
-                    fv[this_nmid_lyr] = mathutils.Vector((nmx,nmy,nmz))
-                    npx = (fv.co.x - min_x)/dim_x
-                    npy = (fv.co.y - min_y)/dim_y
-                    npz = (fv.co.z - min_z)/dim_z
-                    fv[this_npx_lyr] = npx
-                    fv[this_npy_lyr] = npy
-                    fv[this_npz_lyr] = npz
-                    fndvec = mathutils.Vector((npx,npy,npz)) - mathutils.Vector((nmx,nmy,nmz))
-                    fndist = fndvec.length
-                    fv[this_nd_lyr] = fndist
-            if len(cbm.faces) < 1:
-                for vert in cbm.verts:
-                    vert[this_mid_lyr] = vert.co
-                    vert[this_dist_lyr] = 0.0
-                    if use_ray == True:
-                        inwards = -vert.normal
-                        inwards_vec = inwards * plane_vec
-                        inwards_dir = inwards_vec.normalized()
-                        hit, hit_loc, hit_norm, hit_i, hit_o, hit_ab = bpy.context.scene.ray_cast(depsgraph, vert.co + (inwards*0.01), inwards_dir)
-                        if hit:
-                            last_mid = vert.co.lerp(hit_loc, 0.5)
-                            fvec = vert.co - last_mid
-                            fvdist = fvec.length
-                            vert[this_mid_lyr] = last_mid
-                            vert[this_dist_lyr] = fvdist
         
-        uv_multiplier = 1/math.ceil(math.sqrt(this_res))
 
-        uv_layer = bpbm.loops.layers.uv.verify()
+        # for cbm in cbms:
+        #     this_mid_lyr = props.get_attribute_layer('xmid', 'FLOAT_VECTOR', 'POINT', cbm)
+        #     this_nmid_lyr = props.get_attribute_layer('norm_xmid', 'FLOAT_VECTOR', 'POINT', cbm)
+        #     this_dist_lyr = props.get_attribute_layer('dist_x', 'FLOAT', 'POINT', cbm)
+        #     this_npx_lyr = props.get_attribute_layer('norm_pos_x', 'FLOAT', 'POINT', cbm)
+        #     this_npy_lyr = props.get_attribute_layer('norm_pos_y', 'FLOAT', 'POINT', cbm)
+        #     this_npz_lyr = props.get_attribute_layer('norm_pos_z', 'FLOAT', 'POINT', cbm)
+        #     this_nd_lyr = props.get_attribute_layer('norm_dist_x', 'FLOAT', 'POINT', cbm)
+        #     if ax == 'y':
+        #         this_mid_lyr = props.get_attribute_layer('ymid', 'FLOAT_VECTOR', 'POINT', cbm)
+        #         this_nmid_lyr = props.get_attribute_layer('norm_ymid', 'FLOAT_VECTOR', 'POINT', cbm)
+        #         this_dist_lyr = props.get_attribute_layer('dist_y', 'FLOAT', 'POINT', cbm)
+        #         this_nd_lyr = props.get_attribute_layer('norm_dist_y', 'FLOAT', 'POINT', cbm)
+        #     if ax == 'z':
+        #         this_mid_lyr = props.get_attribute_layer('zmid', 'FLOAT_VECTOR', 'POINT', cbm)
+        #         this_nmid_lyr = props.get_attribute_layer('norm_zmid', 'FLOAT_VECTOR', 'POINT', cbm)
+        #         this_dist_lyr = props.get_attribute_layer('dist_z', 'FLOAT', 'POINT', cbm)
+        #         this_nd_lyr = props.get_attribute_layer('norm_dist_z', 'FLOAT', 'POINT', cbm)
+        #     if len(cbm.faces) < 1:
+        #         for vert in cbm.verts:
+        #             vert[this_mid_lyr] = vert.co
+        #             vert[this_dist_lyr] = 0.0
+        #             if use_ray == True:
+        #                 inwards = -vert.normal
+        #                 inwards_vec = inwards * plane_vec
+        #                 inwards_dir = inwards_vec.normalized()
+        #                 hit, hit_loc, hit_norm, hit_i, hit_o, hit_ab = bpy.context.scene.ray_cast(depsgraph, vert.co + (inwards*0.01), inwards_dir)
+        #                 if hit:
+        #                     last_mid = vert.co.lerp(hit_loc, 0.5)
+        #                 fvec = vert.co - last_mid
+        #                 fvdist = fvec.length
+        #                 vert[this_mid_lyr] = last_mid
+        #                 vert[this_dist_lyr] = fvdist
+        #                 nmx = (last_mid.x - min_x)/dim_x
+        #                 nmy = (last_mid.y - min_y)/dim_y
+        #                 nmz = (last_mid.z - min_z)/dim_z
+        #                 vert[this_nmid_lyr] = mathutils.Vector((nmx,nmy,nmz))
+        #                 npx = (vert.co.x - min_x)/dim_x
+        #                 npy = (vert.co.y - min_y)/dim_y
+        #                 npz = (vert.co.z - min_z)/dim_z
+        #                 vert[this_npx_lyr] = npx
+        #                 vert[this_npy_lyr] = npy
+        #                 vert[this_npz_lyr] = npz
+        #                 fndvec = mathutils.Vector((npx,npy,npz)) - mathutils.Vector((nmx,nmy,nmz))
+        #                 fndist = fndvec.length
+        #                 vert[this_nd_lyr] = fndist
 
-        bpbm.verts.ensure_lookup_table()
-        bpbm.edges.ensure_lookup_table()
-        bpbm.faces.ensure_lookup_table()
+        #                 vi_str = str(vert.index).rjust(5)
+        #                 col_len_a = max(len('Vert' + vi_str), len('World:'), len('Normalized:'))
+        #                 col_len_bc_sub = 7
+        #                 col_len_bc = (col_len_bc_sub*3) + 2
+        #                 col_len_d = 9
 
-        last_face = bpbm.faces[0]
+        #                 v_str = f'Vert {vi_str}'
 
-        for bpi, bp_lvl in enumerate(lvla):
-            if bpi == 0:
-                for bpvi, bpfv in enumerate(last_face.verts):
-                    bpfv.co = corna[bpvi] + (vec * bp_lvl)
-                    for bpl in bpfv.link_loops:
-                        bpl[uv_layer].uv.x = uv_corners[bpvi][0] * uv_multiplier
-                        bpl[uv_layer].uv.y = uv_corners[bpvi][1] * uv_multiplier
-            if bpi > 0:
-                nf = last_face.copy()
-                uv_y_add = (math.floor(bpi * uv_multiplier)) * uv_multiplier
-                uv_x_add = math.fmod(bpi * uv_multiplier, 1.0)
-                for bpvi, bpfv in enumerate(nf.verts):
-                    bpfv.co = corna[bpvi] + (vec * bp_lvl)
-                    for bpl in bpfv.link_loops:
-                        bpl[uv_layer].uv.x = (uv_corners[bpvi][0] * uv_multiplier) + uv_x_add
-                        bpl[uv_layer].uv.y = (uv_corners[bpvi][1] * uv_multiplier) + uv_y_add
-                last_face = nf
-        
+        #                 mid_x_str = '{:.3f}'.format(last_mid.x).rjust(col_len_bc_sub)
+        #                 mid_y_str = '{:.3f}'.format(last_mid.y).rjust(col_len_bc_sub)
+        #                 mid_z_str = '{:.3f}'.format(last_mid.y).rjust(col_len_bc_sub)
+
+        #                 nmid_x_str = '{:.3f}'.format(nmx).rjust(col_len_bc_sub)
+        #                 nmid_y_str = '{:.3f}'.format(nmy).rjust(col_len_bc_sub)
+        #                 nmid_z_str = '{:.3f}'.format(nmz).rjust(col_len_bc_sub)
+                        
+        #                 pos_x_str = '{:.3f}'.format(vert.co.x).rjust(col_len_bc_sub)
+        #                 pos_y_str = '{:.3f}'.format(vert.co.y).rjust(col_len_bc_sub)
+        #                 pos_z_str = '{:.3f}'.format(vert.co.z).rjust(col_len_bc_sub)
+                        
+        #                 npos_x_str = '{:.3f}'.format(npx).rjust(col_len_bc_sub)
+        #                 npos_y_str = '{:.3f}'.format(npy).rjust(col_len_bc_sub)
+        #                 npos_z_str = '{:.3f}'.format(npz).rjust(col_len_bc_sub)
+                        
+        #                 dist_str = '{:.4f}'.format(fvdist).rjust(col_len_d)
+        #                 ndist_str = '{:.4f}'.format(fndist).rjust(col_len_d)
+
+        #                 axis_str = 'X'.center(col_len_bc_sub) + 'Y'.center(col_len_bc_sub) + 'Z'.center(col_len_bc_sub)
+
+        #                 mid_str = f'{mid_x_str} {mid_x_str} {mid_x_str}'
+        #                 nmid_str = f'{nmid_x_str} {nmid_y_str} {nmid_z_str}'
+        #                 pos_str = f'{pos_x_str} {pos_y_str} {pos_z_str}'
+        #                 npos_str = f'{npos_x_str} {npos_y_str} {npos_z_str}'
+        #                 if hit:
+        #                     print('Raycasting inwards from vertex', vert.index, 'in axis', ax, ': Hit!')
+        #                     print('Hit object:', hit_o.name)
+        #                     print(v_str.ljust(col_len_a) + 'Position:'.center(col_len_bc) + '   ' +  'Midpoint:'.center(col_len_bc) + 'Distance:'.rjust(col_len_d))
+        #                     print(' '.ljust(col_len_a) + axis_str.center(col_len_bc) + '   | ' + axis_str.center(col_len_bc))
+        #                     print('World:'.ljust(col_len_a) + pos_str.center(col_len_bc) + '   | ' + mid_str.center(col_len_bc) + dist_str.rjust(col_len_d))
+        #                     print('Normalized:'.ljust(col_len_a) + npos_str.center(col_len_bc) + '   | ' + nmid_str.center(col_len_bc) + ndist_str.rjust(col_len_d))
+        #                 if not hit:
+        #                     print('Raycasting inwards from ', vert.index, ' in axis ', ax, ': No hit.')   
+        #     else:
+        #         for face in cbm.faces:
+        #             for fv in face.verts:
+        #                 if use_ray == True:
+        #                     inwards = -fv.normal
+        #                     inwards_vec = inwards * plane_vec
+        #                     inwards_dir = inwards_vec.normalized()
+        #                     hit, hit_loc, hit_norm, hit_i, hit_o, hit_ab = bpy.context.scene.ray_cast(depsgraph, fv.co + (inwards*0.01), inwards_dir)
+        #                     if hit:
+        #                         last_mid = fv.co.lerp(hit_loc, 0.5)
+        #                 else:
+        #                     last_mid = face.calc_center_median_weighted()
+        #                 fvec = fv.co - last_mid
+        #                 fvdist = fvec.length
+        #                 fv[this_mid_lyr] = last_mid
+        #                 fv[this_dist_lyr] = fvdist
+        #                 nmx = (last_mid.x - min_x)/dim_x
+        #                 nmy = (last_mid.y - min_y)/dim_y
+        #                 nmz = (last_mid.z - min_z)/dim_z
+        #                 fv[this_nmid_lyr] = mathutils.Vector((nmx,nmy,nmz))
+        #                 npx = (fv.co.x - min_x)/dim_x
+        #                 npy = (fv.co.y - min_y)/dim_y
+        #                 npz = (fv.co.z - min_z)/dim_z
+        #                 fv[this_npx_lyr] = npx
+        #                 fv[this_npy_lyr] = npy
+        #                 fv[this_npz_lyr] = npz
+        #                 fndvec = mathutils.Vector((npx,npy,npz)) - mathutils.Vector((nmx,nmy,nmz))
+        #                 fndist = fndvec.length
+        #                 fv[this_nd_lyr] = fndist
+
         for lvl_cut_a in lvl_cuts:
             for lvl_cut_o in lvl_cut_a:
                 lvl_cut_o.data.update()
@@ -555,8 +620,49 @@ else:
         #                 # print('Vert', bmov.index, 'is between', str(lvli), 'and', str(lvli + 1), 'at alpha', str(cur_alpha), 'with normalized position in', ax, '=', str(new_np))
         #                 bmov[lyr] = new_vol
         #                 bmov[np] = new_np
-        
-            
+    for obj,vobj, vec,lyr,mid,np,dst,ax,lvla,lvln,cbms,dmin,dmax,inc,bpbm,bpbbm,corna in zip(ol, olv, olcovm, ollyr,olmid,olnp,oldist,olax,lvls,lvlns,cutbms,mins,maxs,incs,bpbms,bpbbms,corners):
+        this_res = x_res
+        if ax == 'y':
+            this_res = y_res
+        if ax == 'z':
+            this_res = z_res
+        uv_multiplier = 1/math.ceil(math.sqrt(this_res))
+
+        uv_layer = bpbm.loops.layers.uv.verify()
+        uv_layer_b = bpbbm.loops.layers.uv.verify()
+
+        bpbm.verts.ensure_lookup_table()
+        bpbm.edges.ensure_lookup_table()
+        bpbm.faces.ensure_lookup_table()
+        bpbbm.verts.ensure_lookup_table()
+        bpbbm.edges.ensure_lookup_table()
+        bpbbm.faces.ensure_lookup_table()
+
+        last_face = bpbm.faces[0]
+        base_face = bpbbm.faces[0]
+
+        for bpi, bp_lvl in enumerate(lvla):
+            if bpi == 0:
+                for bpvi, bpfv in enumerate(last_face.verts):
+                    bpfv.co = corna[bpvi] + (vec * bp_lvl)
+                    for bpl in bpfv.link_loops:
+                        bpl[uv_layer].uv.x = uv_corners[bpvi][0] * uv_multiplier
+                        bpl[uv_layer].uv.y = uv_corners[bpvi][1] * uv_multiplier
+                for bpbvi, bpbfv in enumerate(base_face.verts):
+                    bpbfv.co = corna[bpbvi] + (vec * bp_lvl)
+                    for bpbl in bpbfv.link_loops:
+                        bpbl[uv_layer_b].uv.x = uv_corners[bpbvi][0]
+                        bpbl[uv_layer_b].uv.y = uv_corners[bpbvi][1]
+            if bpi > 0:
+                nf = last_face.copy()
+                uv_y_add = (math.floor(bpi * uv_multiplier)) * uv_multiplier
+                uv_x_add = math.fmod(bpi * uv_multiplier, 1.0)
+                for bpvi, bpfv in enumerate(nf.verts):
+                    bpfv.co = corna[bpvi] + (vec * bp_lvl)
+                    for bpl in bpfv.link_loops:
+                        bpl[uv_layer].uv.x = (uv_corners[bpvi][0] * uv_multiplier) + uv_x_add
+                        bpl[uv_layer].uv.y = (uv_corners[bpvi][1] * uv_multiplier) + uv_y_add
+                last_face = nf
     # for bmov in bmo.verts:
     #     bmov[orig_co] = bmov.co
     
@@ -566,6 +672,21 @@ for bake_plane in bake_planes:
     bake_plane.data.update()
 
 bpy.ops.object.editmode_toggle()
-        
 
+bpy.ops.object.select_all(action='DESELECT')
 
+for cutos in lvl_cuts:
+    for cuto in cutos:
+        cuto.data.update()
+        cuto.select_set(True)
+        bpy.context.view_layer.objects.active = cuto
+    bpy.ops.object.join()
+    bpy.ops.object.select_all(action='DESELECT')
+
+for laxo, lvaxo in zip(axos, vaxos):
+    # laxo.select_set(True)
+    # bpy.context.view_layer.objects.active = laxo
+    # bpy.ops.object.delete()
+    lvaxo.select_set(True)
+    bpy.context.view_layer.objects.active = lvaxo
+    bpy.ops.object.delete()

@@ -253,10 +253,6 @@ bmo.verts.ensure_lookup_table()
 bmo.edges.ensure_lookup_table()
 bmo.faces.ensure_lookup_table()
 
-bmo_flat_uv_xy = bmo.loops.layers.uv.new()
-bmo_flat_uv_yz = bmo.loops.layers.uv.new()
-bmo_flat_uv_zy = bmo.loops.layers.uv.new()
-
 for bmov in bmo.verts:
     this_npx = (bmov.co.x - min_x) / dim_x
     this_npy = (bmov.co.y - min_y) / dim_y
@@ -264,14 +260,6 @@ for bmov in bmo.verts:
     bmov[norm_pos_x] = this_npx
     bmov[norm_pos_y] = this_npy
     bmov[norm_pos_z] = this_npz
-
-    for loop in bmov.link_loops:
-        loop[bmo_flat_uv_xy].uv.x = this_npx
-        loop[bmo_flat_uv_xy].uv.y = this_npy
-        loop[bmo_flat_uv_yz].uv.x = this_npy
-        loop[bmo_flat_uv_yz].uv.y = this_npz
-        loop[bmo_flat_uv_zy].uv.x = this_npz
-        loop[bmo_flat_uv_zy].uv.y = this_npy
 
 if per_vert == True:
     for obj,vec,lyr,mid,ax,np,nd,nmid,dst in zip(ol, olcovm, ollyr,olmid,olax,olnp,olndist,olnmid,oldist):

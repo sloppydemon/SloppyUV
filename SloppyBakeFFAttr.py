@@ -177,6 +177,20 @@ for lvli, lvlsa in enumerate(lvls):
         this_cut_o.select_set(True)
         lvl_cuts[lvli].append(this_cut_o)
 
+lvl_lerps = [[],[],[]]
+
+for lvli, lvlsa in enumerate(lvls):
+    for lvlvi, lvlv in enumerate(lvlsa):
+        this_lerp_o = mo.copy()
+        this_lerp_o.data = mo.data.copy()
+        this_lerp_o.name = mo.name + '_lerp.' + olax[lvli] + str(lvlvi)
+        bpy.context.collection.objects.link(this_lerp_o)
+        props.find_or_add_attribute_other_obj('lerp_x', 'FLOAT', 'POINT', this_lerp_o)
+        props.find_or_add_attribute_other_obj('lerp_y', 'FLOAT', 'POINT', this_lerp_o)
+        props.find_or_add_attribute_other_obj('lerp_z', 'FLOAT', 'POINT', this_lerp_o)
+        this_lerp_o.select_set(True)
+        lvl_lerps[lvli].append(this_lerp_o)
+
 bpy.ops.object.editmode_toggle()
 
 bmo = bmesh.from_edit_mesh(mo.data)
@@ -208,6 +222,13 @@ for lvl_cut_i, lvl_cut_a in enumerate(lvl_cuts):
     for cut_i, cut_o in enumerate(lvl_cut_a):
         lvl_cut_bm = bmesh.from_edit_mesh(cut_o.data)
         cutbms[lvl_cut_i].append(lvl_cut_bm)
+
+lerpbms = [[],[],[]]
+
+for lvl_lerp_i, lvl_lerp_a in enumerate(lvl_lerps):
+    for lerp_i, lerp_o in enumerate(lvl_lerp_a):
+        lvl_lerp_bm = bmesh.from_edit_mesh(lerp_o.data)
+        lerpbms[lvl_lerp_i].append(lvl_lerp_bm)
 
 bpbms = []
 bpbbms = []
@@ -327,10 +348,6 @@ bmo.verts.ensure_lookup_table()
 bmo.edges.ensure_lookup_table()
 bmo.faces.ensure_lookup_table()
 
-bmo_flat_uv_xy = bmo.loops.layers.uv.new()
-bmo_flat_uv_yz = bmo.loops.layers.uv.new()
-bmo_flat_uv_zy = bmo.loops.layers.uv.new()
-
 for bmov in bmo.verts:
     this_npx = (bmov.co.x - min_x) / dim_x
     this_npy = (bmov.co.y - min_y) / dim_y
@@ -339,16 +356,8 @@ for bmov in bmo.verts:
     bmov[norm_pos_y] = this_npy
     bmov[norm_pos_z] = this_npz
 
-    for loop in bmov.link_loops:
-        loop[bmo_flat_uv_xy].uv.x = this_npx
-        loop[bmo_flat_uv_xy].uv.y = this_npy
-        loop[bmo_flat_uv_yz].uv.x = this_npy
-        loop[bmo_flat_uv_yz].uv.y = this_npz
-        loop[bmo_flat_uv_zy].uv.x = this_npz
-        loop[bmo_flat_uv_zy].uv.y = this_npy
-
 if per_vert == False:
-    for obj,vobj, vec,lyr,mid,np,dst,ax,lvla,lvln,cbms,dmin,dmax,inc,bpbm,bpbbm,corna in zip(ol, olv, olcovm, ollyr,olmid,olnp,oldist,olax,lvls,lvlns,cutbms,mins,maxs,incs,bpbms,bpbbms,corners):
+    for obj,vobj, vec,lyr,mid,np,dst,ax,lvla,lvln,cbms,lbms,dmin,dmax,inc,bpbm,bpbbm,corna in zip(ol, olv, olcovm, ollyr,olmid,olnp,oldist,olax,lvls,lvlns,cutbms,lerpbms,mins,maxs,incs,bpbms,bpbbms,corners):
         current_vm = vec
         plane_vec = mathutils.Vector((1,1,1)) - vec
         
@@ -372,8 +381,6 @@ if per_vert == False:
             this_res = z_res
         max_dim = max(dim_x, dim_y, dim_z)
 
-        last_mid = mathutils.Vector()
-
         # vol_lvls = []
 
         lvla_rng = [i for i in range(len(lvla))]
@@ -386,21 +393,30 @@ if per_vert == False:
 
         for ri in lvla_rng:
             lvl = lvla[ri]
+            lerp_lvl = lvl + inc
             cbm = cbms[ri]
+            lbm = lbms[ri]
 
+            this_lerp = props.get_attribute_layer('lerp_x', 'FLOAT', 'POINT', lbm)
+            this_loco = props.get_attribute_layer('orig_co', 'FLOAT_VECTOR', 'POINT', lbm)
             this_cmid = props.get_attribute_layer('xmid', 'FLOAT_VECTOR', 'POINT', cbm)
             this_cdist = props.get_attribute_layer('dist_x', 'FLOAT', 'POINT', cbm)
             this_oco = props.get_attribute_layer('orig_co', 'FLOAT_VECTOR', 'POINT', cbm)
             if ax == 'y':
+                this_lerp = props.get_attribute_layer('lerp_y', 'FLOAT', 'POINT', lbm)
                 this_cmid = props.get_attribute_layer('ymid', 'FLOAT_VECTOR', 'POINT', cbm)
                 this_cdist = props.get_attribute_layer('dist_y', 'FLOAT', 'POINT', cbm)
             if ax == 'z':
+                this_lerp = props.get_attribute_layer('lerp_z', 'FLOAT', 'POINT', lbm)
                 this_cmid = props.get_attribute_layer('zmid', 'FLOAT_VECTOR', 'POINT', cbm)
                 this_cdist = props.get_attribute_layer('dist_z', 'FLOAT', 'POINT', cbm)
             
+            lvl_str = '{:.3f}'.format(lvl)
+            lerp_lvl_str = '{:.3f}'.format(lerp_lvl)
             print('Before cut:', len([v for v in obj.verts if v.is_valid]), 'level: ', lvl, ' in axis: ', ax)
             
             plane_pos = vec * lvl
+            lerp_plane_pos = vec * lerp_lvl
             ocut = bmesh.ops.bisect_plane(obj, geom=obj.verts[:] + obj.edges[:] + obj.faces[:], dist=0.0001, plane_co=plane_pos, plane_no=vec, use_snap_center=False, clear_outer=False, clear_inner=False)
             for element in ocut['geom_cut']:
                 if element not in ocut_geo:
@@ -409,6 +425,20 @@ if per_vert == False:
             rest_edges = [i for i in ocut['geom'] if i in obj.edges and i not in ocut['geom_cut']]
             rest_faces = [i for i in ocut['geom'] if i in obj.faces and i not in ocut['geom_cut']]
             # rest_cut, rest_rest = bmesh.ops.bisect_plane(rbm, geom=rbm.verts[:] + rbm.edges[:] + rbm.faces[:], dist=0.0001, plane_co=plane_pos, plane_no=vec, use_snap_center=False, clear_outer=False, clear_inner=False)
+            hicut = bmesh.ops.bisect_plane(lbm, geom=lbm.verts[:] + lbm.edges[:] + lbm.faces[:], dist=0.0001, plane_co=lerp_plane_pos, plane_no=vec, use_snap_center=False, clear_outer=True, clear_inner=False)
+            locut = bmesh.ops.bisect_plane(lbm, geom=lbm.verts[:] + lbm.edges[:] + lbm.faces[:], dist=0.0001, plane_co=plane_pos, plane_no=vec, use_snap_center=False, clear_outer=False, clear_inner=True)
+            
+            for lv in lbm.verts:
+                val_to_lerp = lv[this_loco].x
+                if ax == 'y':
+                    val_to_lerp = lv[this_loco].y
+                if ax == 'z':
+                    val_to_lerp = lv[this_loco].z
+                nu_lerp = (val_to_lerp - lvl) / inc
+                lv[this_lerp] = nu_lerp
+                nulco = (lv.co * plane_vec) + (vec * lvl)
+                lv.co = nulco
+
             ccut = bmesh.ops.bisect_plane(cbm, geom=cbm.verts[:] + cbm.edges[:] + cbm.faces[:], dist=0.0001, plane_co=plane_pos, plane_no=vec, use_snap_center=False, clear_outer=True, clear_inner=True)
             cut_verts = [i for i in ccut['geom_cut'] if i in cbm.verts]
             cut_edges = [i for i in ccut['geom_cut'] if i in cbm.edges]
@@ -417,9 +447,16 @@ if per_vert == False:
             new_edges = [i for i in extruded['geom'] if i in cbm.edges and i not in cut_edges]
             new_faces = [i for i in extruded['geom'] if i in cbm.faces]
 
+            for cv in cut_verts:
+                cv[this_cdist] = 0.0
+
             for nv in new_verts:
-                nuco = nv[this_cmid] * plane_vec + (nv.co * vec)
+                # nuco = nv[this_cmid] * plane_vec + (nv.co * vec)
+                nv_vec = (nv[this_cmid] - nv.co) * plane_vec
+                nv_dir = nv_vec.normalized()
+                nuco = nv.co + (nv_dir * 0.01)
                 nv.co = nuco
+                nv[this_cdist] = 1.0
             
             avg_dist = 1.0
             for nv in new_verts:
@@ -579,6 +616,9 @@ if per_vert == False:
         for lvl_cut_a in lvl_cuts:
             for lvl_cut_o in lvl_cut_a:
                 lvl_cut_o.data.update()
+        for lvl_lerp_a in lvl_lerps:
+            for lvl_lerp_o in lvl_lerp_a:
+                lvl_lerp_o.data.update()
 
         
 
@@ -679,18 +719,68 @@ bpy.ops.object.editmode_toggle()
 
 bpy.ops.object.select_all(action='DESELECT')
 
+joined_cuts = []
+
 for cutos in lvl_cuts:
     for cuto in cutos:
         cuto.data.update()
         cuto.select_set(True)
         bpy.context.view_layer.objects.active = cuto
     bpy.ops.object.join()
+    joined_cuts.append(cuto)
+    bpy.ops.object.select_all(action='DESELECT')
+
+joined_lerps = []
+
+for lerpos in lvl_lerps:
+    for lerpo in lerpos:
+        lerpo.data.update()
+        lerpo.select_set(True)
+        bpy.context.view_layer.objects.active = lerpo
+    bpy.ops.object.join()
+    joined_cuts.append(lerpo)
     bpy.ops.object.select_all(action='DESELECT')
 
 for laxo, lvaxo in zip(axos, vaxos):
-    # laxo.select_set(True)
-    # bpy.context.view_layer.objects.active = laxo
-    # bpy.ops.object.delete()
+    laxo.select_set(True)
+    bpy.context.view_layer.objects.active = laxo
+    bpy.ops.object.delete()
     lvaxo.select_set(True)
     bpy.context.view_layer.objects.active = lvaxo
     bpy.ops.object.delete()
+
+
+
+for bapl, jcut, lax in zip(bake_planes, joined_cuts, olax):
+    ax = lax.upper()
+    bf_mat = bpy.data.materials['M_Bake']
+    bt_mat = bpy.data.materials['M_BakePlane']
+    bt_tex = bt_mat.node_tree.nodes['Tex_BakeTo']
+    bf_bsdf = bf_mat.node_tree.nodes['Principled BSDF']
+    bf_ed = bf_mat.node_tree.nodes['DistFromEdge']
+    jcut.select_set(True)
+    bapl.select_set(True)
+    bpy.context.view_layer.objects.active = bapl
+    ed_nam_str = 'T_' + mo.name + '_EdgeDist_' + ax
+    img = None
+    try:
+        img = bpy.data.images[ed_nam_str]
+    except:
+        bpy.ops.image.new(name=ed_nam_str, width=4096, height=4096, color=(0,0,0,1), alpha=False, generated_type='BLANK', float=False, use_stereo_3d=False, tiled=False)
+        img = bpy.data.images[ed_nam_str]
+    bt_tex.select = True
+    bt_tex.image = img
+    bf_mat.node_tree.links.new(bf_bsdf.inputs[0], bf_ed.outputs[ax])
+    bpy.context.scene.cycles.bake_type = 'DIFFUSE'
+    bpy.context.scene.render.bake.margin = 1024
+    bpy.context.scene.render.bake.margin_type = 'ADJACENT_FACES'
+    bpy.context.scene.render.bake.use_selected_to_active = True
+    bpy.context.scene.render.bake.max_ray_distance = 0.003
+    bpy.context.scene.render.bake.cage_extrusion = 0.002
+    bpy.context.scene.render.bake.use_pass_direct = False
+    bpy.context.scene.render.bake.use_pass_indirect = False
+    bpy.context.scene.render.bake.use_pass_color = True
+    bpy.ops.object.bake(type='DIFFUSE')
+    jcut.select_set(False)
+    bapl.select_set(False)
+

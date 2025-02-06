@@ -751,7 +751,7 @@ for laxo, lvaxo in zip(axos, vaxos):
 
 
 
-for bapl, jcut, lax in zip(bake_planes, joined_cuts, olax):
+for bapl, jcut, lax, inc in zip(bake_planes, joined_cuts, olax, incs):
     ax = lax.upper()
     bf_mat = bpy.data.materials['M_Bake']
     bt_mat = bpy.data.materials['M_BakePlane']
@@ -775,8 +775,8 @@ for bapl, jcut, lax in zip(bake_planes, joined_cuts, olax):
     bpy.context.scene.render.bake.margin = 1024
     bpy.context.scene.render.bake.margin_type = 'ADJACENT_FACES'
     bpy.context.scene.render.bake.use_selected_to_active = True
-    bpy.context.scene.render.bake.max_ray_distance = 0.003
-    bpy.context.scene.render.bake.cage_extrusion = 0.002
+    bpy.context.scene.render.bake.max_ray_distance = inc/2
+    bpy.context.scene.render.bake.cage_extrusion = 0.004
     bpy.context.scene.render.bake.use_pass_direct = False
     bpy.context.scene.render.bake.use_pass_indirect = False
     bpy.context.scene.render.bake.use_pass_color = True

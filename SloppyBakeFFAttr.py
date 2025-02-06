@@ -12,9 +12,9 @@ depsgraph = bpy.context.evaluated_depsgraph_get()
 per_vert = False
 # use_ray = False
 
-x_res = 8
-y_res = 8
-z_res = 18
+x_res = 16
+y_res = 16
+z_res = 25
 
 min_x = bpy.context.object.bound_box[3][0]
 max_x = bpy.context.object.bound_box[4][0]
@@ -759,6 +759,14 @@ for bapl, jcut, lax, inc in zip(bake_planes, joined_cuts, olax, incs):
     bf_bsdf = bf_mat.node_tree.nodes['Principled BSDF']
     bf_ed = bf_mat.node_tree.nodes['DistFromEdge']
     jcut.select_set(True)
+    try:
+        bpy.ops.object.shade_smooth(keep_sharp_edges=False)
+    except:
+        pass
+    try:
+        bpy.ops.mesh.customdata_custom_splitnormals_clear()
+    except:
+        pass
     bapl.select_set(True)
     bpy.context.view_layer.objects.active = bapl
     ed_nam_str = 'T_' + mo.name + '_EdgeDist_' + ax

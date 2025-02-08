@@ -12,9 +12,9 @@ depsgraph = bpy.context.evaluated_depsgraph_get()
 per_vert = False
 # use_ray = False
 
-x_res = 16
-y_res = 16
-z_res = 25
+x_res = 24
+y_res = 24
+z_res = 24
 
 min_x = bpy.context.object.bound_box[3][0]
 max_x = bpy.context.object.bound_box[4][0]
@@ -120,7 +120,6 @@ olax = [
 axos = [None, None, None]
 vaxos = [None, None, None]
 bake_planes = [None, None, None]
-bake_plane_bases = [None, None, None]
 
 for axi, axis in enumerate(olax):
     this_axis_o = mo.copy()
@@ -143,13 +142,6 @@ for axi, axis in enumerate(olax):
     bpy.context.collection.objects.link(this_bake_plane)
     this_bake_plane.select_set(True)
     bake_planes[axi] = this_bake_plane
-
-    this_bake_plane_base = bake_plane.copy()
-    this_bake_plane_base.data = bake_plane.data.copy()
-    this_bake_plane_base.name = mo.name + '_basePlane.' + axis
-    bpy.context.collection.objects.link(this_bake_plane_base)
-    this_bake_plane_base.select_set(True)
-    bake_plane_bases[axi] = this_bake_plane_base
 
 lvl_cuts = [[],[],[]]
 
@@ -191,6 +183,20 @@ for lvli, lvlsa in enumerate(lvls):
         this_lerp_o.select_set(True)
         lvl_lerps[lvli].append(this_lerp_o)
 
+lvl_masks = [[],[],[]]
+
+for lvli, lvlsa in enumerate(lvls):
+    for lvlvi, lvlv in enumerate(lvlsa):
+        this_mask_o = mo.copy()
+        this_mask_o.data = mo.data.copy()
+        this_mask_o.name = mo.name + '_mask.' + olax[lvli] + str(lvlvi)
+        bpy.context.collection.objects.link(this_mask_o)
+        props.find_or_add_attribute_other_obj('mask_x', 'FLOAT', 'POINT', this_mask_o)
+        props.find_or_add_attribute_other_obj('mask_y', 'FLOAT', 'POINT', this_mask_o)
+        props.find_or_add_attribute_other_obj('mask_z', 'FLOAT', 'POINT', this_mask_o)
+        this_mask_o.select_set(True)
+        lvl_masks[lvli].append(this_mask_o)
+
 bpy.ops.object.editmode_toggle()
 
 bmo = bmesh.from_edit_mesh(mo.data)
@@ -230,15 +236,18 @@ for lvl_lerp_i, lvl_lerp_a in enumerate(lvl_lerps):
         lvl_lerp_bm = bmesh.from_edit_mesh(lerp_o.data)
         lerpbms[lvl_lerp_i].append(lvl_lerp_bm)
 
+maskbms = [[],[],[]]
+
+for lvl_mask_i, lvl_mask_a in enumerate(lvl_masks):
+    for mask_i, mask_o in enumerate(lvl_mask_a):
+        lvl_mask_bm = bmesh.from_edit_mesh(mask_o.data)
+        maskbms[lvl_mask_i].append(lvl_mask_bm)
+
 bpbms = []
-bpbbms = []
 
 for bp in  bake_planes:
     bake_plane_bm = bmesh.from_edit_mesh(bp.data)
     bpbms.append(bake_plane_bm)
-for bpb in  bake_plane_bases:
-    bake_plane_base_bm = bmesh.from_edit_mesh(bpb.data)
-    bpbbms.append(bake_plane_base_bm)
 
 olcovm = [
     mathutils.Vector((1,0,0)),
@@ -357,7 +366,7 @@ for bmov in bmo.verts:
     bmov[norm_pos_z] = this_npz
 
 if per_vert == False:
-    for obj,vobj, vec,lyr,mid,np,dst,ax,lvla,lvln,cbms,lbms,dmin,dmax,inc,bpbm,bpbbm,corna in zip(ol, olv, olcovm, ollyr,olmid,olnp,oldist,olax,lvls,lvlns,cutbms,lerpbms,mins,maxs,incs,bpbms,bpbbms,corners):
+    for obj,vobj, vec,lyr,mid,np,dst,ax,lvla,lvln,cbms,lbms,mbms,dmin,dmax,inc,bpbm,corna in zip(ol, olv, olcovm, ollyr,olmid,olnp,oldist,olax,lvls,lvlns,cutbms,lerpbms,maskbms,mins,maxs,incs,bpbms,corners):
         current_vm = vec
         plane_vec = mathutils.Vector((1,1,1)) - vec
         
@@ -396,18 +405,22 @@ if per_vert == False:
             lerp_lvl = lvl + inc
             cbm = cbms[ri]
             lbm = lbms[ri]
+            mbm = mbms[ri]
 
             this_lerp = props.get_attribute_layer('lerp_x', 'FLOAT', 'POINT', lbm)
+            this_mask = props.get_attribute_layer('mask_x', 'FLOAT', 'POINT', mbm)
             this_loco = props.get_attribute_layer('orig_co', 'FLOAT_VECTOR', 'POINT', lbm)
             this_cmid = props.get_attribute_layer('xmid', 'FLOAT_VECTOR', 'POINT', cbm)
             this_cdist = props.get_attribute_layer('dist_x', 'FLOAT', 'POINT', cbm)
             this_oco = props.get_attribute_layer('orig_co', 'FLOAT_VECTOR', 'POINT', cbm)
             if ax == 'y':
                 this_lerp = props.get_attribute_layer('lerp_y', 'FLOAT', 'POINT', lbm)
+                this_mask = props.get_attribute_layer('mask_y', 'FLOAT', 'POINT', mbm)
                 this_cmid = props.get_attribute_layer('ymid', 'FLOAT_VECTOR', 'POINT', cbm)
                 this_cdist = props.get_attribute_layer('dist_y', 'FLOAT', 'POINT', cbm)
             if ax == 'z':
                 this_lerp = props.get_attribute_layer('lerp_z', 'FLOAT', 'POINT', lbm)
+                this_mask = props.get_attribute_layer('mask_z', 'FLOAT', 'POINT', mbm)
                 this_cmid = props.get_attribute_layer('zmid', 'FLOAT_VECTOR', 'POINT', cbm)
                 this_cdist = props.get_attribute_layer('dist_z', 'FLOAT', 'POINT', cbm)
             
@@ -424,7 +437,12 @@ if per_vert == False:
             rest_verts = [i for i in ocut['geom'] if i in obj.verts and i not in ocut['geom_cut']]
             rest_edges = [i for i in ocut['geom'] if i in obj.edges and i not in ocut['geom_cut']]
             rest_faces = [i for i in ocut['geom'] if i in obj.faces and i not in ocut['geom_cut']]
-            # rest_cut, rest_rest = bmesh.ops.bisect_plane(rbm, geom=rbm.verts[:] + rbm.edges[:] + rbm.faces[:], dist=0.0001, plane_co=plane_pos, plane_no=vec, use_snap_center=False, clear_outer=False, clear_inner=False)
+
+            mask_cut = bmesh.ops.bisect_plane(mbm, geom=mbm.verts[:] + mbm.edges[:] + mbm.faces[:], dist=0.0001, plane_co=plane_pos, plane_no=vec, use_snap_center=False, clear_outer=True, clear_inner=True)
+            bmesh.ops.holes_fill(mbm, edges=mbm.edges)
+            for mv in mbm.verts:
+                mv[this_mask] = 1.0
+            
             hicut = bmesh.ops.bisect_plane(lbm, geom=lbm.verts[:] + lbm.edges[:] + lbm.faces[:], dist=0.0001, plane_co=lerp_plane_pos, plane_no=vec, use_snap_center=False, clear_outer=True, clear_inner=False)
             locut = bmesh.ops.bisect_plane(lbm, geom=lbm.verts[:] + lbm.edges[:] + lbm.faces[:], dist=0.0001, plane_co=plane_pos, plane_no=vec, use_snap_center=False, clear_outer=False, clear_inner=True)
             
@@ -435,9 +453,11 @@ if per_vert == False:
                 if ax == 'z':
                     val_to_lerp = lv[this_loco].z
                 nu_lerp = (val_to_lerp - lvl) / inc
-                lv[this_lerp] = nu_lerp
-                nulco = (lv.co * plane_vec) + (vec * lvl)
+                nulco = (lv.co * plane_vec) + (vec * lvl) - (vec * (1 - nu_lerp) * (inc/4))
                 lv.co = nulco
+                nu_lerp *= 1.5
+                nu_lerp -= 0.25
+                lv[this_lerp] = nu_lerp
 
             ccut = bmesh.ops.bisect_plane(cbm, geom=cbm.verts[:] + cbm.edges[:] + cbm.faces[:], dist=0.0001, plane_co=plane_pos, plane_no=vec, use_snap_center=False, clear_outer=True, clear_inner=True)
             cut_verts = [i for i in ccut['geom_cut'] if i in cbm.verts]
@@ -448,7 +468,7 @@ if per_vert == False:
             new_faces = [i for i in extruded['geom'] if i in cbm.faces]
 
             for cv in cut_verts:
-                cv[this_cdist] = 0.0
+                cv[this_cdist] = -0.25
 
             for nv in new_verts:
                 # nuco = nv[this_cmid] * plane_vec + (nv.co * vec)
@@ -456,7 +476,7 @@ if per_vert == False:
                 nv_dir = nv_vec.normalized()
                 nuco = nv.co + (nv_dir * 0.01)
                 nv.co = nuco
-                nv[this_cdist] = 1.0
+                nv[this_cdist] = 1.25
             
             avg_dist = 1.0
             for nv in new_verts:
@@ -466,152 +486,12 @@ if per_vert == False:
             else:
                 avg_dist = 0.05
 
-            # bmesh.ops.holes_fill(cbm, edges=new_edges)
-
-            # bmesh.ops.remove_doubles(cbm, verts=new_verts, dist=0.01)
-            # if use_ray == False:
-            #     cut_new_faces = bmesh.ops.holes_fill(cbm, edges=cbm.edges)
-            #     new_faces = bmesh.ops.holes_fill(obj, edges=obj.edges)
-
-            # cut_cut, cut_rest = bmesh.ops.bisect_plane(cbm, geom=cbm.verts[:] + cbm.edges[:] + cbm.faces[:], dist=0.0001, plane_co=plane_pos, plane_no=vec, use_snap_center=False, clear_outer=True, clear_inner=True)
-            
-            # vol = vol_calc(obj.calc_volume(), bmo_vol)
-
-            # vol_lvls.append(vol)
-            # lvl_np = lvln[ri]
-            # lvl_vol_item = [lvl, vol, lvl_np]
-            # lvl_vol_map.append(lvl_vol_item)
-            # vol_str = '{:.4f}'.format(vol)
             print('After cut:',len([v for v in obj.verts if v.is_valid]), 'Number of new faces:', len(new_faces), 'Avg. distance to midpoint:', avg_dist)
 
         rest_verts = [i for i in obj.verts if i not in ocut_geo]
         rest_edges = [i for i in obj.edges if i not in ocut_geo]
         rest_faces = [i for i in obj.faces if i not in ocut_geo]
         bmesh.ops.dissolve_edges(obj, edges=rest_edges, use_verts=False,use_face_split=True)
-
-        # vol_lvls.sort(reverse=True)
-
-        # obj.data.update()
-        
-
-        # for cbm in cbms:
-        #     this_mid_lyr = props.get_attribute_layer('xmid', 'FLOAT_VECTOR', 'POINT', cbm)
-        #     this_nmid_lyr = props.get_attribute_layer('norm_xmid', 'FLOAT_VECTOR', 'POINT', cbm)
-        #     this_dist_lyr = props.get_attribute_layer('dist_x', 'FLOAT', 'POINT', cbm)
-        #     this_npx_lyr = props.get_attribute_layer('norm_pos_x', 'FLOAT', 'POINT', cbm)
-        #     this_npy_lyr = props.get_attribute_layer('norm_pos_y', 'FLOAT', 'POINT', cbm)
-        #     this_npz_lyr = props.get_attribute_layer('norm_pos_z', 'FLOAT', 'POINT', cbm)
-        #     this_nd_lyr = props.get_attribute_layer('norm_dist_x', 'FLOAT', 'POINT', cbm)
-        #     if ax == 'y':
-        #         this_mid_lyr = props.get_attribute_layer('ymid', 'FLOAT_VECTOR', 'POINT', cbm)
-        #         this_nmid_lyr = props.get_attribute_layer('norm_ymid', 'FLOAT_VECTOR', 'POINT', cbm)
-        #         this_dist_lyr = props.get_attribute_layer('dist_y', 'FLOAT', 'POINT', cbm)
-        #         this_nd_lyr = props.get_attribute_layer('norm_dist_y', 'FLOAT', 'POINT', cbm)
-        #     if ax == 'z':
-        #         this_mid_lyr = props.get_attribute_layer('zmid', 'FLOAT_VECTOR', 'POINT', cbm)
-        #         this_nmid_lyr = props.get_attribute_layer('norm_zmid', 'FLOAT_VECTOR', 'POINT', cbm)
-        #         this_dist_lyr = props.get_attribute_layer('dist_z', 'FLOAT', 'POINT', cbm)
-        #         this_nd_lyr = props.get_attribute_layer('norm_dist_z', 'FLOAT', 'POINT', cbm)
-        #     if len(cbm.faces) < 1:
-        #         for vert in cbm.verts:
-        #             vert[this_mid_lyr] = vert.co
-        #             vert[this_dist_lyr] = 0.0
-        #             if use_ray == True:
-        #                 inwards = -vert.normal
-        #                 inwards_vec = inwards * plane_vec
-        #                 inwards_dir = inwards_vec.normalized()
-        #                 hit, hit_loc, hit_norm, hit_i, hit_o, hit_ab = bpy.context.scene.ray_cast(depsgraph, vert.co + (inwards*0.01), inwards_dir)
-        #                 if hit:
-        #                     last_mid = vert.co.lerp(hit_loc, 0.5)
-        #                 fvec = vert.co - last_mid
-        #                 fvdist = fvec.length
-        #                 vert[this_mid_lyr] = last_mid
-        #                 vert[this_dist_lyr] = fvdist
-        #                 nmx = (last_mid.x - min_x)/dim_x
-        #                 nmy = (last_mid.y - min_y)/dim_y
-        #                 nmz = (last_mid.z - min_z)/dim_z
-        #                 vert[this_nmid_lyr] = mathutils.Vector((nmx,nmy,nmz))
-        #                 npx = (vert.co.x - min_x)/dim_x
-        #                 npy = (vert.co.y - min_y)/dim_y
-        #                 npz = (vert.co.z - min_z)/dim_z
-        #                 vert[this_npx_lyr] = npx
-        #                 vert[this_npy_lyr] = npy
-        #                 vert[this_npz_lyr] = npz
-        #                 fndvec = mathutils.Vector((npx,npy,npz)) - mathutils.Vector((nmx,nmy,nmz))
-        #                 fndist = fndvec.length
-        #                 vert[this_nd_lyr] = fndist
-
-        #                 vi_str = str(vert.index).rjust(5)
-        #                 col_len_a = max(len('Vert' + vi_str), len('World:'), len('Normalized:'))
-        #                 col_len_bc_sub = 7
-        #                 col_len_bc = (col_len_bc_sub*3) + 2
-        #                 col_len_d = 9
-
-        #                 v_str = f'Vert {vi_str}'
-
-        #                 mid_x_str = '{:.3f}'.format(last_mid.x).rjust(col_len_bc_sub)
-        #                 mid_y_str = '{:.3f}'.format(last_mid.y).rjust(col_len_bc_sub)
-        #                 mid_z_str = '{:.3f}'.format(last_mid.y).rjust(col_len_bc_sub)
-
-        #                 nmid_x_str = '{:.3f}'.format(nmx).rjust(col_len_bc_sub)
-        #                 nmid_y_str = '{:.3f}'.format(nmy).rjust(col_len_bc_sub)
-        #                 nmid_z_str = '{:.3f}'.format(nmz).rjust(col_len_bc_sub)
-                        
-        #                 pos_x_str = '{:.3f}'.format(vert.co.x).rjust(col_len_bc_sub)
-        #                 pos_y_str = '{:.3f}'.format(vert.co.y).rjust(col_len_bc_sub)
-        #                 pos_z_str = '{:.3f}'.format(vert.co.z).rjust(col_len_bc_sub)
-                        
-        #                 npos_x_str = '{:.3f}'.format(npx).rjust(col_len_bc_sub)
-        #                 npos_y_str = '{:.3f}'.format(npy).rjust(col_len_bc_sub)
-        #                 npos_z_str = '{:.3f}'.format(npz).rjust(col_len_bc_sub)
-                        
-        #                 dist_str = '{:.4f}'.format(fvdist).rjust(col_len_d)
-        #                 ndist_str = '{:.4f}'.format(fndist).rjust(col_len_d)
-
-        #                 axis_str = 'X'.center(col_len_bc_sub) + 'Y'.center(col_len_bc_sub) + 'Z'.center(col_len_bc_sub)
-
-        #                 mid_str = f'{mid_x_str} {mid_x_str} {mid_x_str}'
-        #                 nmid_str = f'{nmid_x_str} {nmid_y_str} {nmid_z_str}'
-        #                 pos_str = f'{pos_x_str} {pos_y_str} {pos_z_str}'
-        #                 npos_str = f'{npos_x_str} {npos_y_str} {npos_z_str}'
-        #                 if hit:
-        #                     print('Raycasting inwards from vertex', vert.index, 'in axis', ax, ': Hit!')
-        #                     print('Hit object:', hit_o.name)
-        #                     print(v_str.ljust(col_len_a) + 'Position:'.center(col_len_bc) + '   ' +  'Midpoint:'.center(col_len_bc) + 'Distance:'.rjust(col_len_d))
-        #                     print(' '.ljust(col_len_a) + axis_str.center(col_len_bc) + '   | ' + axis_str.center(col_len_bc))
-        #                     print('World:'.ljust(col_len_a) + pos_str.center(col_len_bc) + '   | ' + mid_str.center(col_len_bc) + dist_str.rjust(col_len_d))
-        #                     print('Normalized:'.ljust(col_len_a) + npos_str.center(col_len_bc) + '   | ' + nmid_str.center(col_len_bc) + ndist_str.rjust(col_len_d))
-        #                 if not hit:
-        #                     print('Raycasting inwards from ', vert.index, ' in axis ', ax, ': No hit.')   
-        #     else:
-        #         for face in cbm.faces:
-        #             for fv in face.verts:
-        #                 if use_ray == True:
-        #                     inwards = -fv.normal
-        #                     inwards_vec = inwards * plane_vec
-        #                     inwards_dir = inwards_vec.normalized()
-        #                     hit, hit_loc, hit_norm, hit_i, hit_o, hit_ab = bpy.context.scene.ray_cast(depsgraph, fv.co + (inwards*0.01), inwards_dir)
-        #                     if hit:
-        #                         last_mid = fv.co.lerp(hit_loc, 0.5)
-        #                 else:
-        #                     last_mid = face.calc_center_median_weighted()
-        #                 fvec = fv.co - last_mid
-        #                 fvdist = fvec.length
-        #                 fv[this_mid_lyr] = last_mid
-        #                 fv[this_dist_lyr] = fvdist
-        #                 nmx = (last_mid.x - min_x)/dim_x
-        #                 nmy = (last_mid.y - min_y)/dim_y
-        #                 nmz = (last_mid.z - min_z)/dim_z
-        #                 fv[this_nmid_lyr] = mathutils.Vector((nmx,nmy,nmz))
-        #                 npx = (fv.co.x - min_x)/dim_x
-        #                 npy = (fv.co.y - min_y)/dim_y
-        #                 npz = (fv.co.z - min_z)/dim_z
-        #                 fv[this_npx_lyr] = npx
-        #                 fv[this_npy_lyr] = npy
-        #                 fv[this_npz_lyr] = npz
-        #                 fndvec = mathutils.Vector((npx,npy,npz)) - mathutils.Vector((nmx,nmy,nmz))
-        #                 fndist = fndvec.length
-        #                 fv[this_nd_lyr] = fndist
 
         for lvl_cut_a in lvl_cuts:
             for lvl_cut_o in lvl_cut_a:
@@ -620,70 +500,21 @@ if per_vert == False:
             for lvl_lerp_o in lvl_lerp_a:
                 lvl_lerp_o.data.update()
 
-        
-
-        # for bmov in bmo.verts:
-        #     effective_co = bmov.co * vec
-        #     cur_ax_val = effective_co.x + effective_co.y + effective_co.z
-        #     above_or_below = False
-        #     if cur_ax_val <= dmin:
-        #         bmov[lyr] = 0.0
-        #         bmov[np] = 0.0
-        #         above_or_below = True
-        #         print('Vert', bmov.index, 'is below bounds in axis ', ax)
-        #     if cur_ax_val >= dmax:
-        #         bmov[lyr] = 1.0
-        #         bmov[np] = 1.0
-        #         print('Vert', bmov.index, 'is above bounds in axis ', ax)
-        #         above_or_below = True
-        #     if above_or_below == False:
-        #         for lvi, lv in enumerate(lvl_vol_map):
-        #             # print(ax, lvli, lvla[lvli], vol_lvls[lvli])
-        #             this_lvl = lvl_vol_map[lvi][0]
-        #             this_vol = lvl_vol_map[lvi][1]
-        #             this_np = lvl_vol_map[lvi][2]
-        #             below_lvl = 0.0
-        #             try:
-        #                 below_lvl = lvl_vol_map[lvi + 1][0]
-        #             except:
-        #                 pass
-        #             below_vol = 0.0
-        #             try:
-        #                 below_vol = lvl_vol_map[lvi + 1][1]
-        #             except:
-        #                 pass
-        #             bwloe_np = 0.0
-        #             try:
-        #                 below_np = lvl_vol_map[lvi + 1][2]
-        #             except:
-        #                 pass
-        #             if cur_ax_val < this_lvl and cur_ax_val > below_lvl:
-        #                 cur_alpha = (below_lvl - cur_ax_val) / inc
-        #                 new_vol = bl_math.lerp(this_vol, below_vol, cur_alpha)
-        #                 new_np = bl_math.lerp(this_np, below_np, cur_alpha)
-        #                 # print('Vert', bmov.index, 'is between', str(lvli), 'and', str(lvli + 1), 'at alpha', str(cur_alpha), 'with normalized position in', ax, '=', str(new_np))
-        #                 bmov[lyr] = new_vol
-        #                 bmov[np] = new_np
-    for obj,vobj, vec,lyr,mid,np,dst,ax,lvla,lvln,cbms,dmin,dmax,inc,bpbm,bpbbm,corna in zip(ol, olv, olcovm, ollyr,olmid,olnp,oldist,olax,lvls,lvlns,cutbms,mins,maxs,incs,bpbms,bpbbms,corners):
+    for obj,vobj, vec,lyr,mid,np,dst,ax,lvla,lvln,cbms,dmin,dmax,inc,bpbm,corna in zip(ol, olv, olcovm, ollyr,olmid,olnp,oldist,olax,lvls,lvlns,cutbms,mins,maxs,incs,bpbms,corners):
         this_res = x_res
         if ax == 'y':
             this_res = y_res
         if ax == 'z':
             this_res = z_res
-        uv_multiplier = 1/math.ceil(math.sqrt(this_res))
+        uv_multiplier = 1/math.ceil(math.sqrt(this_res + 1))
 
         uv_layer = bpbm.loops.layers.uv.verify()
-        uv_layer_b = bpbbm.loops.layers.uv.verify()
 
         bpbm.verts.ensure_lookup_table()
         bpbm.edges.ensure_lookup_table()
         bpbm.faces.ensure_lookup_table()
-        bpbbm.verts.ensure_lookup_table()
-        bpbbm.edges.ensure_lookup_table()
-        bpbbm.faces.ensure_lookup_table()
 
         last_face = bpbm.faces[0]
-        base_face = bpbbm.faces[0]
 
         for bpi, bp_lvl in enumerate(lvla):
             if bpi == 0:
@@ -692,11 +523,6 @@ if per_vert == False:
                     for bpl in bpfv.link_loops:
                         bpl[uv_layer].uv.x = uv_corners[bpvi][0] * uv_multiplier
                         bpl[uv_layer].uv.y = uv_corners[bpvi][1] * uv_multiplier
-                for bpbvi, bpbfv in enumerate(base_face.verts):
-                    bpbfv.co = corna[bpbvi] + (vec * bp_lvl)
-                    for bpbl in bpbfv.link_loops:
-                        bpbl[uv_layer_b].uv.x = uv_corners[bpbvi][0]
-                        bpbl[uv_layer_b].uv.y = uv_corners[bpbvi][1]
             if bpi > 0:
                 nf = last_face.copy()
                 uv_y_add = (math.floor(bpi * uv_multiplier)) * uv_multiplier
@@ -738,7 +564,18 @@ for lerpos in lvl_lerps:
         lerpo.select_set(True)
         bpy.context.view_layer.objects.active = lerpo
     bpy.ops.object.join()
-    joined_cuts.append(lerpo)
+    joined_lerps.append(lerpo)
+    bpy.ops.object.select_all(action='DESELECT')
+
+joined_masks = []
+
+for maskos in lvl_masks:
+    for masko in maskos:
+        masko.data.update()
+        masko.select_set(True)
+        bpy.context.view_layer.objects.active = masko
+    bpy.ops.object.join()
+    joined_masks.append(masko)
     bpy.ops.object.select_all(action='DESELECT')
 
 for laxo, lvaxo in zip(axos, vaxos):
@@ -757,6 +594,7 @@ for bapl, jcut, lax, inc in zip(bake_planes, joined_cuts, olax, incs):
     bt_mat = bpy.data.materials['M_BakePlane']
     bt_tex = bt_mat.node_tree.nodes['Tex_BakeTo']
     bf_bsdf = bf_mat.node_tree.nodes['Principled BSDF']
+    bt_bsdf = bt_mat.node_tree.nodes['Principled BSDF']
     bf_ed = bf_mat.node_tree.nodes['DistFromEdge']
     jcut.select_set(True)
     try:
@@ -779,8 +617,93 @@ for bapl, jcut, lax, inc in zip(bake_planes, joined_cuts, olax, incs):
     bt_tex.select = True
     bt_tex.image = img
     bf_mat.node_tree.links.new(bf_bsdf.inputs[0], bf_ed.outputs[ax])
+    bt_mat.node_tree.links.new(bt_bsdf.inputs[0], bt_tex.outputs['Color'])
     bpy.context.scene.cycles.bake_type = 'DIFFUSE'
     bpy.context.scene.render.bake.margin = 1024
+    bpy.context.scene.render.bake.margin_type = 'EXTEND'
+    bpy.context.scene.render.bake.use_selected_to_active = True
+    bpy.context.scene.render.bake.max_ray_distance = inc/2
+    bpy.context.scene.render.bake.cage_extrusion = 0.004
+    bpy.context.scene.render.bake.use_pass_direct = False
+    bpy.context.scene.render.bake.use_pass_indirect = False
+    bpy.context.scene.render.bake.use_pass_color = True
+    bpy.ops.object.bake(type='DIFFUSE')
+    img.pack()
+    jcut.select_set(False)
+    bapl.select_set(False)
+
+for bapl, jlerp, lax, inc in zip(bake_planes, joined_lerps, olax, incs):
+    ax = lax.upper()
+    bf_mat = bpy.data.materials['M_Bake']
+    bt_mat = bpy.data.materials['M_BakePlane']
+    bt_tex = bt_mat.node_tree.nodes['Tex_BakeTo']
+    bf_bsdf = bf_mat.node_tree.nodes['Principled BSDF']
+    bf_ed = bf_mat.node_tree.nodes['LevelLerp']
+    jlerp.select_set(True)
+    try:
+        bpy.ops.object.shade_smooth(keep_sharp_edges=False)
+    except:
+        pass
+    try:
+        bpy.ops.mesh.customdata_custom_splitnormals_clear()
+    except:
+        pass
+    bapl.select_set(True)
+    bpy.context.view_layer.objects.active = bapl
+    ed_nam_str = 'T_' + mo.name + '_LevelLerp_' + ax
+    img = None
+    try:
+        img = bpy.data.images[ed_nam_str]
+    except:
+        bpy.ops.image.new(name=ed_nam_str, width=4096, height=4096, color=(0,0,0,1), alpha=False, generated_type='BLANK', float=False, use_stereo_3d=False, tiled=False)
+        img = bpy.data.images[ed_nam_str]
+    bt_tex.select = True
+    bt_tex.image = img
+    bf_mat.node_tree.links.new(bf_bsdf.inputs[0], bf_ed.outputs[ax])
+    bpy.context.scene.cycles.bake_type = 'DIFFUSE'
+    bpy.context.scene.render.bake.margin = 1024
+    bpy.context.scene.render.bake.margin_type = 'EXTEND'
+    bpy.context.scene.render.bake.use_selected_to_active = True
+    bpy.context.scene.render.bake.max_ray_distance = inc/2
+    bpy.context.scene.render.bake.cage_extrusion = 0.004
+    bpy.context.scene.render.bake.use_pass_direct = False
+    bpy.context.scene.render.bake.use_pass_indirect = False
+    bpy.context.scene.render.bake.use_pass_color = True
+    bpy.ops.object.bake(type='DIFFUSE')
+    img.pack()
+    jlerp.select_set(False)
+    bapl.select_set(False)
+
+for bapl, jmask, lax, inc in zip(bake_planes, joined_masks, olax, incs):
+    ax = lax.upper()
+    bf_mat = bpy.data.materials['M_Bake']
+    bt_mat = bpy.data.materials['M_BakePlane']
+    bt_tex = bt_mat.node_tree.nodes['Tex_BakeTo']
+    bf_bsdf = bf_mat.node_tree.nodes['Principled BSDF']
+    bf_ed = bf_mat.node_tree.nodes['LevelMask']
+    jmask.select_set(True)
+    try:
+        bpy.ops.object.shade_smooth(keep_sharp_edges=False)
+    except:
+        pass
+    try:
+        bpy.ops.mesh.customdata_custom_splitnormals_clear()
+    except:
+        pass
+    bapl.select_set(True)
+    bpy.context.view_layer.objects.active = bapl
+    ed_nam_str = 'T_' + mo.name + '_LevelMask_' + ax
+    img = None
+    try:
+        img = bpy.data.images[ed_nam_str]
+    except:
+        bpy.ops.image.new(name=ed_nam_str, width=4096, height=4096, color=(0,0,0,1), alpha=False, generated_type='BLANK', float=False, use_stereo_3d=False, tiled=False)
+        img = bpy.data.images[ed_nam_str]
+    bt_tex.select = True
+    bt_tex.image = img
+    bf_mat.node_tree.links.new(bf_bsdf.inputs[0], bf_ed.outputs[ax])
+    bpy.context.scene.cycles.bake_type = 'DIFFUSE'
+    bpy.context.scene.render.bake.margin = 0
     bpy.context.scene.render.bake.margin_type = 'ADJACENT_FACES'
     bpy.context.scene.render.bake.use_selected_to_active = True
     bpy.context.scene.render.bake.max_ray_distance = inc/2
@@ -789,6 +712,7 @@ for bapl, jcut, lax, inc in zip(bake_planes, joined_cuts, olax, incs):
     bpy.context.scene.render.bake.use_pass_indirect = False
     bpy.context.scene.render.bake.use_pass_color = True
     bpy.ops.object.bake(type='DIFFUSE')
-    jcut.select_set(False)
+    img.pack()
+    jlerp.select_set(False)
     bapl.select_set(False)
 

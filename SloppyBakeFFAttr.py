@@ -507,6 +507,7 @@ if per_vert == False:
         if ax == 'z':
             this_res = z_res
         uv_multiplier = 1/math.ceil(math.sqrt(this_res + 1))
+        uv_init_add_y = (math.ceil(math.sqrt(this_res + 1)) - 1) * uv_multiplier
 
         uv_layer = bpbm.loops.layers.uv.verify()
 
@@ -522,7 +523,7 @@ if per_vert == False:
                     bpfv.co = corna[bpvi] + (vec * bp_lvl)
                     for bpl in bpfv.link_loops:
                         bpl[uv_layer].uv.x = uv_corners[bpvi][0] * uv_multiplier
-                        bpl[uv_layer].uv.y = uv_corners[bpvi][1] * uv_multiplier
+                        bpl[uv_layer].uv.y = (uv_corners[bpvi][1] * uv_multiplier) + uv_init_add_y
             if bpi > 0:
                 nf = last_face.copy()
                 uv_y_add = (math.floor(bpi * uv_multiplier)) * uv_multiplier
@@ -531,7 +532,7 @@ if per_vert == False:
                     bpfv.co = corna[bpvi] + (vec * bp_lvl)
                     for bpl in bpfv.link_loops:
                         bpl[uv_layer].uv.x = (uv_corners[bpvi][0] * uv_multiplier) + uv_x_add
-                        bpl[uv_layer].uv.y = (uv_corners[bpvi][1] * uv_multiplier) + uv_y_add
+                        bpl[uv_layer].uv.y = (uv_corners[bpvi][1] * uv_multiplier) + uv_init_add_y - uv_y_add
                 last_face = nf
     # for bmov in bmo.verts:
     #     bmov[orig_co] = bmov.co

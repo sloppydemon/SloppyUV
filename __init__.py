@@ -26,6 +26,7 @@ from SloppyUV.SloppyBakeProcAttr import SloppyProcAttrBake # type: ignore
 from SloppyUV.SloppyBakeProcAttr import SloppyBlurAttribute # type: ignore
 from SloppyUV.SloppyProcedurals import SloppyQuadUVUnfold # type: ignore
 from SloppyUV.SloppyProcedurals import SloppyUVToMesh # type: ignore
+from SloppyUV.SloppyProcedurals import RedoUVEdgeLength # type: ignore
 
 class SloppyProperties(bpy.types.PropertyGroup):
     
@@ -37,7 +38,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
     bvP = bpy.props.BoolVectorProperty
     sP = bpy.props.StringProperty
     
-    # region Functions
+    # region Common Functions
     def viewco(self, vec):
         '''Fetches (TODO: active or) any View3D region and space and outputs the input vector mapped
         to that 3D view.'''
@@ -277,6 +278,12 @@ class SloppyProperties(bpy.types.PropertyGroup):
         for face in faces:
             norm += face.normal
         return norm.normalized()
+    
+    def uv_sort_x(self, loop_uvco_list):
+        return(loop_uvco_list[1].x)
+    
+    def uv_sort_y(self, loop_uvco_list):
+        return(loop_uvco_list[1].y)
 
     def remap_val(self, val, in_min, in_max, out_min, out_max):
         in_interval = in_max - in_min
@@ -559,6 +566,9 @@ class SloppyProperties(bpy.types.PropertyGroup):
         SortFaceByDist.z_only = self.distsort_z_only
         return None
     # endregion
+
+
+
 
     # region Properties Def
     distsort_bottom_up : bP (
@@ -974,6 +984,9 @@ class SloppyProperties(bpy.types.PropertyGroup):
         ) # type: ignore
     # endregion
 
+
+
+
     # region ProcUV Properties
     procuv_unfold_mode : eP(
         name = "Mode",
@@ -1035,6 +1048,8 @@ class SloppyProperties(bpy.types.PropertyGroup):
         ) # type: ignore
     #endregion
     # endregion
+
+
 
 
 #region Panel Classes
@@ -1323,6 +1338,10 @@ class SloppyDebugPanel(bpy.types.Panel):
         layout.prop(props, "verbose")
 # endregion
 
+
+
+
+#region Error Dialog
 class SloppyErrorDialog(bpy.types.Operator):
     bl_idname = "operator.sloppy_dialog"
     bl_label = "Error!"
@@ -1349,7 +1368,12 @@ class SloppyErrorDialog(bpy.types.Operator):
         box_err = layout.box()
         box_err.label(text = msg_heading)
         box_err.label(text = msg)
+#endregion
 
+
+
+
+#region CalcScale class
 # Scaling section very unfinished
 class SloppyCalcScale(bpy.types.Operator):
     bl_idname = "operator.sloppy_scale_calc"
@@ -1493,7 +1517,12 @@ class SloppyCalcScale(bpy.types.Operator):
         props.update_scalings(context)
         
         return {"FINISHED"}
+#endregion
 
+
+
+
+#region ApplyScale class
 class SloppyApplyScale(bpy.types.Operator):
     bl_idname = "operator.sloppy_scale_apply"
     bl_label = "Apply"
@@ -1596,7 +1625,12 @@ class SloppyApplyScale(bpy.types.Operator):
         props.update_scalings(context)
         
         return {"FINISHED"}
+#endregion
 
+
+
+
+#region AlignUVs setprop classes
 class SloppyAlignUVsGeo(bpy.types.Operator):
     bl_idname = "operator.sloppy_align_uvs_geo"
     bl_label = "3D View"
@@ -1622,7 +1656,12 @@ class SloppyAlignUVsUV(bpy.types.Operator):
         bpy.ops.operator.sloppy_align_uvs()
         
         return {"FINISHED"}
+#endregion
 
+
+
+
+#region AlignUVs main class
 class SloppyAlignUVs(bpy.types.Operator):
     bl_idname = "operator.sloppy_align_uvs"
     bl_label = "Align UVs"
@@ -1835,7 +1874,12 @@ class SloppyAlignUVs(bpy.types.Operator):
             print("UV Alignment complete!\n")
         
         return {"FINISHED"}
-        
+#endregion
+
+
+
+
+#region PeltUVs class
 class PeltUVs(bpy.types.Operator):
     bl_idname = "operator.pelt_uvs"
     bl_label = "Generate Pelt"
@@ -2239,7 +2283,12 @@ class PeltUVs(bpy.types.Operator):
             print("Pelt Generation complete!\n")
         
         return {"FINISHED"}
+#endregion
 
+
+
+
+#region SelectByIndex class
 class SloppySelectByIndex(bpy.types.Operator):
     bl_idname = "operator.select_by_index"
     bl_label = "Select By Index"
@@ -2315,7 +2364,12 @@ class SloppySelectByIndex(bpy.types.Operator):
         props.select_by_index_bm(domain, self.choose_domain, self.uvs, self.i_start, self.i_end, self.sel_range, self.extend, False, in_bm)
         
         return {"FINISHED"}
+#endregion
 
+
+
+
+#region ShiftSelectByIndex class
 class SloppyShiftSelectByIndex(bpy.types.Operator):
     bl_idname = "operator.shift_select_by_index"
     bl_label = "Shift Selection By Index"
@@ -2389,7 +2443,12 @@ class SloppyShiftSelectByIndex(bpy.types.Operator):
         props.shift_select_by_index_bm(domain, self.choose_domain, self.shift_amount, self.shift_by_len, self.shift_by_len_neg, self.extend, self.both_directions, False, in_bm)
         
         return {"FINISHED"}
+#endregion
 
+
+
+
+#region Initialization
 classes = [SloppyProperties,
            SloppyErrorDialog,
            SloppyUVPanel,
@@ -2416,7 +2475,8 @@ classes = [SloppyProperties,
            SloppyShiftSelectByIndex,
            SloppyQuadUVUnfold,
            SloppyFlatQuadPanel,
-           SloppyUVToMesh
+           SloppyUVToMesh,
+           RedoUVEdgeLength
            ]
 
 def register():
@@ -2436,3 +2496,4 @@ def unregister():
         
 if __name__ == "__main__":
     register()
+#endregion

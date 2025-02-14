@@ -7,7 +7,7 @@ import mathutils
 import bl_math
 import sys
 
-# region Quad Unfold
+# region QuadUVUnfold op.
 class SloppyQuadUVUnfold(bpy.types.Operator):
     bl_idname = "operator.sloppy_quad_unfold"
     bl_label = "Quad Unfold UVs"
@@ -85,7 +85,6 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
         description = "Quantize island's averaged normal to up, down, right, left",
         default = False
         ) # type: ignore
-    #endregion
 
     only_move_loops_in_face : bP(
         name = "Only Edit Current Loops",
@@ -1784,7 +1783,10 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
         return {"FINISHED"}
 # endregion
 
-# region UV to Mesh Op
+
+
+
+# region UVToMesh op.
 class SloppyUVToMesh(bpy.types.Operator):
     bl_idname = "operator.sloppy_uv_to_mesh"
     bl_label = "Sloppy UV to Mesh"
@@ -1865,6 +1867,169 @@ class SloppyUVToMesh(bpy.types.Operator):
                 uvdiff = uvco - loop.vert.co
                 loop.vert[v_uv] = uvco
                 loop.vert[v_co_diff] = uvdiff
+
+        bpy.context.active_object.data.update()
+
+        return {"FINISHED"}
+# endregion
+
+
+
+
+# region RedoUVEdgeLength op.
+class RedoUVEdgeLength(bpy.types.Operator):
+    bl_idname = "operator.sloppy_rebuild_uv_edge_length"
+    bl_label = "Rebuild UV Edge Length"
+    bl_description = "Rebuild edge lengths of selected (preferably straight) UV edges"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    iP = bpy.props.IntProperty
+    fP = bpy.props.FloatProperty
+    fvP = bpy.props.FloatVectorProperty
+    bP = bpy.props.BoolProperty
+    eP = bpy.props.EnumProperty
+    bvP = bpy.props.BoolVectorProperty
+    sP = bpy.props.StringProperty
+
+    # region prop def
+    use_world_scale : bP(
+        name = "Use World Scale",
+        description = "Rebuild edge lengths in World-UV 1:1 scale",
+        default = False
+        ) # type: ignore
+    
+    transform_pivot : eP(
+        name = "Pivot Point",
+        description = "Pivot point for rebuilding UV edge",
+        items = [
+            ("A", "Center", "Relative to averaged center of UV selection"),
+            ("B", "Cursor", "Using UV cursor")
+            ],
+        ) # type: ignore
+
+    shift_pivot : fP(
+        name = "Shift Pivot Point",
+        description = "Shift pivot point along selected edges",
+        default = 0.5,
+        min = 0.0,
+        max = 1.0
+        ) # type: ignore
+
+    #endregion
+
+    def execute(self, context):
+        props = context.scene.sloppy_props
+        bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
+        uv_layer = bm.loops.layers.uv.verify()
+        islands = bmesh_utils.bmesh_linked_uv_islands(bm, uv_layer)
+        remapped_shift = (self.shift_pivot * 2) - 1
+        print('Remapped shift:', remapped_shift)
+        
+        if len(islands) < 1:
+            print('No islands, using all faces.')
+            islands = [[face for face in bm.faces]]
+
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
+
+        curpos = None
+        for area in bpy.context.screen.areas:
+            if area.type == 'IMAGE_EDITOR':   #find the UVeditor
+                curpos = area.spaces.active.cursor_location
+
+        for ii, island in enumerate(islands):
+            island_loops = []
+            for face in island:
+                for loop in face.loops:
+                    if loop not in island_loops:
+                        island_loops.append(loop)
+            print('Loops in island', ii, ':', len(island_loops))
+            selected_uv_loops = []
+            min_x = 9999.0
+            min_y = 9999.0
+            max_x = -9990.0
+            max_y = -9999.0
+            for loop in island_loops:
+                if loop[uv_layer].select == True:
+                    loop_bundle = [loop, loop[uv_layer].uv]
+                    numin_x = min(min_x, loop[uv_layer].uv.x)
+                    min_x = numin_x
+                    numin_y = min(min_y, loop[uv_layer].uv.y)
+                    min_y = numin_y
+                    numax_x = max(max_x, loop[uv_layer].uv.x)
+                    max_x = numax_x
+                    numax_y = max(max_y, loop[uv_layer].uv.y)
+                    max_y = numax_y
+                    selected_uv_loops.append(loop_bundle)
+            x_diff = max_x - min_x
+            y_diff = max_y - min_y
+            print('Number of selected loops in island', ii, ':', len(selected_uv_loops))
+            selected_uv_loops_only = [loop for loop in island_loops if loop[uv_layer].select == True]
+            selected_uv_loops_edge = [loop for loop in island_loops if loop[uv_layer].select_edge == True]
+            selected_verts = [loop[0].vert for loop in selected_uv_loops]
+            selected_edges = [edge for edge in bm.edges if edge.verts[0] in selected_verts and edge.verts[1] in selected_verts]
+            if x_diff > y_diff:
+                selected_uv_loops.sort(key=props.uv_sort_x)
+            if x_diff < y_diff:
+                selected_uv_loops.sort(key=props.uv_sort_y)
+            if len(selected_uv_loops) > 0:
+                min_vert = selected_uv_loops[0][0].vert
+                max_vert = selected_uv_loops[-1][0].vert
+                min_uv = selected_uv_loops[0][1]
+                max_uv = selected_uv_loops[-1][1]
+                center_uv = min_uv.lerp(max_uv, 0.5)
+                print('UV Center:', center_uv.x, center_uv.y)
+                min_to_max_vec = max_uv - min_uv
+                min_to_max_dir = min_to_max_vec.normalized()
+                print('Direction:', min_to_max_dir)
+                total_uv_length = (max_uv - min_uv).length
+                print('Total UV length:', total_uv_length)
+                total_edge_length = 0.0
+                for edge in selected_edges:
+                    total_edge_length += edge.calc_length()
+                print('Total world scale edge length:', total_edge_length)
+                world_to_uv_ratio = total_edge_length/total_uv_length
+                print('World to UV scale ratio: 1:', world_to_uv_ratio)
+                last_vert = min_vert
+                length_to_here = 0.0
+                min_to_max_lerp = 0.0
+                for uvl in selected_uv_loops:
+                    this_vert = uvl[0].vert
+                    if this_vert != last_vert:
+                        this_edge = None
+                        for edge in this_vert.link_edges:
+                            if edge in last_vert.link_edges:
+                                this_edge = edge
+                        try:
+                            length_to_here += this_edge.calc_length()
+                        except:
+                            pass
+                    min_to_max_lerp = length_to_here/total_edge_length
+                    last_vert = this_vert
+                    new_uv_calc = uvl[1]
+                    if self.use_world_scale == False:
+                        if self.transform_pivot == "A":
+                            nuv_min = center_uv - (min_to_max_dir * (total_uv_length / 2))
+                            nuv_max = center_uv + (min_to_max_dir * (total_uv_length / 2))
+                            new_uv_calc = nuv_min.lerp(nuv_max, min_to_max_lerp) + (min_to_max_dir * ((total_uv_length / 2) * remapped_shift))
+                        if self.transform_pivot == "B":
+                            nuv_min = curpos - (min_to_max_dir * (total_uv_length / 2))
+                            nuv_max = curpos + (min_to_max_dir * (total_uv_length / 2))
+                            new_uv_calc = nuv_min.lerp(nuv_max, min_to_max_lerp) + (min_to_max_dir * ((total_uv_length / 2) * remapped_shift))
+                    if self.use_world_scale == True:
+                        if self.transform_pivot == "A":
+                            wuv_min = center_uv - (min_to_max_dir * (total_edge_length / 2))
+                            wuv_max = center_uv + (min_to_max_dir * (total_edge_length / 2))
+                            new_uv_calc = wuv_min.lerp(wuv_max, min_to_max_lerp) + (min_to_max_dir * ((total_edge_length / 2) * remapped_shift))
+                        if self.transform_pivot == "B":
+                            wuv_min = curpos - (min_to_max_dir * (total_edge_length / 2))
+                            wuv_max = curpos + (min_to_max_dir * (total_edge_length / 2))
+                            new_uv_calc = wuv_min.lerp(wuv_max, min_to_max_lerp) + (min_to_max_dir * ((total_edge_length / 2) * remapped_shift))
+                    for loop in this_vert.link_loops:
+                        if loop in selected_uv_loops_only and loop in island_loops:
+                            loop[uv_layer].uv = new_uv_calc
+
 
         bpy.context.active_object.data.update()
 

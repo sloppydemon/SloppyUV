@@ -2035,3 +2035,250 @@ class RedoUVEdgeLength(bpy.types.Operator):
 
         return {"FINISHED"}
 # endregion
+
+
+
+
+# region BasicUVUnfold op.
+class SloppyBasicUVUnfold(bpy.types.Operator):
+    bl_idname = "operator.sloppy_basic_uv_unfold"
+    bl_label = "Basic UV Unfold"
+    bl_description = "Assumes that each non-boundary vertex should have a combined angle sum of 360 degrees (as though in a mesh of triangulated quads), working outwards from an initial selected or calculated non-boundary and non-seam edge"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    iP = bpy.props.IntProperty
+    fP = bpy.props.FloatProperty
+    fvP = bpy.props.FloatVectorProperty
+    bP = bpy.props.BoolProperty
+    eP = bpy.props.EnumProperty
+    bvP = bpy.props.BoolVectorProperty
+    sP = bpy.props.StringProperty
+
+    # region prop def
+    transform_pivot : eP(
+        name = "Pivot Point",
+        description = "Pivot point for rebuilding UV edge",
+        items = [
+            ("A", "Center", "Init edge placed at center of UV 0-1"),
+            ("B", "Cursor", "Init edge placed at cursor")
+            ],
+        ) # type: ignore
+    
+    scaling_mode : eP(
+        name = "Scaling Mode",
+        description = "Scaling of result",
+        items = [
+            ("A", "World Scale", "Scaled 1:1 World to UV"),
+            ("B", "Scale to Bounds - Uniform", "Scaled uniformly to fit within UV 0-1 using largest dimension"),
+            ("C", "Scale to Bounds - Non-Uniform", "Scaled non- uniformly to fit within UV 0-1")
+            ],
+        ) # type: ignore
+    
+    initial_edge_mode : eP(
+        name = "Init Edge",
+        description = "Selection of initial edge",
+        items = [
+            ("A", "Automatic", "Relative to averaged center of UV selection"),
+            ("B", "Selected", "Selected edge (will fallback to automatic selection if selected edge is boundary or seam)")
+            ],
+        ) # type: ignore
+    
+    only_islands_with_selection : bP(
+        name = "Selected Islands Only",
+        description = "Restrict to UV islands with a selection",
+        default=True
+        ) # type: ignore
+
+    #endregion
+
+    def edge_bundle_sort(self, edge_bundle):
+        comp_vec = mathutils.Vector((0,1,0))
+        sort_val = abs(edge_bundle[1].dot(comp_vec)) + edge_bundle[2] + edge_bundle[3]
+        return sort_val
+
+    def get_dir(self, co_source, co_destination):
+        vec = co_destination - co_source
+        dir = vec.normalized()
+        return dir
+    
+    def execute(self, context):
+        props = context.scene.sloppy_props
+        bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
+        uv_layer = bm.loops.layers.uv.verify()
+        islands = bmesh_utils.bmesh_linked_uv_islands(bm, uv_layer)
+        
+        if len(islands) < 1:
+            print('No islands, using all faces.')
+            islands = [[face for face in bm.faces]]
+
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
+
+        curpos = None
+        for area in bpy.context.screen.areas:
+            if area.type == 'IMAGE_EDITOR':   #find the UVeditor
+                curpos = area.spaces.active.cursor_location
+
+        for ii, island in enumerate(islands):
+            island_has_selection = False
+            island_edges = []
+            island_loops = []
+            selected_edge = None
+            for iif in island:
+                if iif.select == True:
+                    island_has_selection = True
+                for iifl in iif.loops:
+                    if iifl.vert.select == True:
+                        island_has_selection = True
+                    if iifl not in island_loops:
+                        island_loops.append(iifl)
+                for iife in iif.edges:
+                    if iife.select == True:
+                        island_has_selection = True
+                        if iife.seam == False and len(iife.link_faces) < 2:
+                            if selected_edge == None:
+                                selected_edge = iife
+                    if iife not in island_edges:
+                        island_edges.append(iife)
+            island_edges_bundled = []
+            for ie in island_edges:
+                ie_is_seam = 0
+                ie_is_boundary = 0
+                if len(ie.link_faces) < 2:
+                    ie_is_boundary += 1
+                if ie.seam == True:
+                    ie_is_seam += 1
+                edge_bundle = [ie, (ie.verts[1].co - ie.verts[0].co).normalized(), ie_is_seam, ie_is_boundary]
+                island_edges_bundled.append(edge_bundle)
+            
+            should_do_island = True
+            if self.only_islands_with_selection == True:
+                should_do_island = island_has_selection
+
+            if should_do_island == True:
+                init_edge = None
+
+                if self.initial_edge_mode == "B":
+                    init_edge = selected_edge
+                if init_edge == None:
+                    island_edges_bundled.sort(key=self.edge_bundle_sort)
+                    init_edge = island_edges_bundled[0][0]
+
+                print('Loops in island', ii, ':', len(island_loops))
+
+                init_pos = mathutils.Vector((0.5, 0.5))
+                if self.transform_pivot == "B":
+                    init_pos = curpos
+                
+                init_uva = mathutils.Vector((init_pos.x - (init_edge.calc_length() / 2), init_pos.y))
+                init_uvb = mathutils.Vector((init_pos.x + (init_edge.calc_length() / 2), init_pos.y))
+
+                min_x = init_uva.x
+                min_y = init_uva.y
+                max_x = init_uvb.x
+                max_y = init_uvb.y
+                
+                for iel in init_edge.verts[0].link_loops:
+                    if iel in island_loops:
+                        iel[uv_layer].uv = init_uva
+                for iel in init_edge.verts[1].link_loops:
+                    if iel in island_loops:
+                        iel[uv_layer].uv = init_uvb
+
+                verts_done = [init_edge.verts[0], init_edge.verts[1]]
+                
+                next_bundle = [
+                    [
+                        init_edge.verts[0], init_edge, init_uva, mathutils.Vector((1,0))
+                    ],
+                    [
+                        init_edge.verts[1], init_edge, init_uvb, mathutils.Vector((-1,0))
+                    ]
+                ]
+                
+                while len(next_bundle) > 0:
+                    this_bundle = next_bundle.copy()
+                    next_bundle.clear()
+
+                    for bi, bundle in enumerate(this_bundle):
+                        bundle_valid = True
+                        for bve in bundle[0].link_edges:
+                            if bve.seam == True:
+                                bundle_valid = False
+                            if len(bve.link_faces) < 2:
+                                bundle_valid = False
+                        
+                        if bundle_valid:
+                            print('Bundle', bi, 'of', len(this_bundle), '- vert index:', bundle[0].index, '- edge index:', bundle[1].index, '- UV position:', bundle[2], '- direction:', bundle[3])
+                            loops_to_do = []
+                            last_loop = None
+                            last_loop_index = 0
+                            last_dir = bundle[3]
+                            angle_sum = 0.0
+                            for bli, bl in enumerate(bundle[0].link_loops):
+                                angle_sum += math.degrees(bl.calc_angle())
+                                if bl.edge == bundle[1]:
+                                    last_loop = bl
+                                    last_loop_index = bli
+                                loops_to_do.append(bl)
+                            angle_ratio = 360/angle_sum
+                            print('Angle sum:', angle_sum)
+                            print('Angle ratio = 1 :', angle_ratio)
+
+                            loop_iter = 0
+                            while loop_iter < len(loops_to_do):
+                                loop_iter += 1
+                                this_index = int(math.fmod(last_loop_index + 1, len(loops_to_do)))
+                                this_loop = loops_to_do[this_index]
+                                dir_a = self.get_dir(bundle[0].co, bundle[1].other_vert(bundle[0]).co)
+                                dir_b = self.get_dir(bundle[0].co, this_loop.edge.other_vert(bundle[0]).co)
+                                print('Old dir/New dir:', dir_a, '/' ,dir_b)
+                                # this_angle_deg = math.degrees(last_loop.calc_angle())
+                                this_angle_deg = dir_a.angle(dir_b)
+                                this_rot_deg = (math.degrees(this_angle_deg)/angle_sum) * 360
+                                print('Old angle/New angle:', math.degrees(this_angle_deg), '/' ,this_rot_deg)
+                                nudir_x = (bundle[3].x * math.cos(this_rot_deg)) - (bundle[3].y * math.sin(this_rot_deg))
+                                nudir_y = (bundle[3].x * math.sin(this_rot_deg)) + (bundle[3].y * math.cos(this_rot_deg))
+                                this_dir = mathutils.Vector((nudir_x,nudir_y)).normalized()
+                                print('New direction:', this_dir)
+                                last_dir = this_dir
+                                this_vec = this_dir * this_loop.edge.calc_length()
+                                this_uvco = bundle[2] + this_vec
+                                numin_x = min(min_x, this_uvco.x)
+                                min_x = numin_x
+                                numin_y = min(min_y, this_uvco.y)
+                                min_y = numin_y
+                                numax_x = max(max_x, this_uvco.x)
+                                max_x = numax_x
+                                numax_y = max(max_y, this_uvco.y)
+                                max_y = numax_y
+                                other_vert = this_loop.edge.other_vert(bundle[0])
+
+                                if other_vert not in verts_done:
+                                    for ovl in other_vert.link_loops:
+                                        if ovl in island_loops:
+                                            ovl[uv_layer].uv = this_uvco
+                                    verts_done.append(other_vert)
+                                    new_bundle = [other_vert, this_loop.edge, this_uvco, -this_dir]
+                                    next_bundle.append(new_bundle)
+                                    print(len(next_bundle))
+                                last_loop = this_loop
+                                last_loop_index = this_index
+
+                                
+                            
+                
+                x_diff = max_x - min_x
+                y_diff = max_y - min_y
+                if x_diff > y_diff:
+                    pass
+                if x_diff < y_diff:
+                    pass
+            
+
+
+        bpy.context.active_object.data.update()
+
+        return {"FINISHED"}
+# endregion

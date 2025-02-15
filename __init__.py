@@ -27,6 +27,7 @@ from SloppyUV.SloppyBakeProcAttr import SloppyBlurAttribute # type: ignore
 from SloppyUV.SloppyProcedurals import SloppyQuadUVUnfold # type: ignore
 from SloppyUV.SloppyProcedurals import SloppyUVToMesh # type: ignore
 from SloppyUV.SloppyProcedurals import RedoUVEdgeLength # type: ignore
+from SloppyUV.SloppyProcedurals import SloppyBasicUVUnfold # type: ignore
 
 class SloppyProperties(bpy.types.PropertyGroup):
     
@@ -285,12 +286,15 @@ class SloppyProperties(bpy.types.PropertyGroup):
     def uv_sort_y(self, loop_uvco_list):
         return(loop_uvco_list[1].y)
 
+    def calc_edge_center(self, edge):
+        return(edge.verts[0].co.lerp(edge.verts[1].co, 0.5))
+    
     def remap_val(self, val, in_min, in_max, out_min, out_max):
         in_interval = in_max - in_min
         out_interval = out_max - out_min
         in_val = val - in_min
         in_fac = 0
-        if in_interval < 0:
+        if in_interval > 0:
             in_fac = in_val / in_interval
         out_val = out_min + (in_fac * out_interval)
         if out_val > out_max:
@@ -2476,7 +2480,8 @@ classes = [SloppyProperties,
            SloppyQuadUVUnfold,
            SloppyFlatQuadPanel,
            SloppyUVToMesh,
-           RedoUVEdgeLength
+           RedoUVEdgeLength,
+           SloppyBasicUVUnfold
            ]
 
 def register():

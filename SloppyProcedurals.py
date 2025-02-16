@@ -2089,10 +2089,13 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
         default=True
         ) # type: ignore
     
-    use_view_to_calc_rot : bP(
-        name = "Use View3D to Calculate Rotations",
-        description = "",
-        default=True
+    per_island_uv_add : fvP(
+        name = "UV Addend/Island",
+        description = "Add to UV coordinates per island",
+        default = (0.0, 0.0),
+        precision = 4,
+        subtype = 'XYZ',
+        size = 2,
         ) # type: ignore
     
     debug_fcd : fP(
@@ -2134,6 +2137,7 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
                 curpos = area.spaces.active.cursor_location
 
         for ii, island in enumerate(islands):
+            island_add = mathutils.Vector((self.per_island_uv_add[0], self.per_island_uv_add[1])) * ii
             island_has_selection = False
             island_edges = []
             island_loops = []
@@ -2148,8 +2152,8 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
                         island_loops.append(iifl)
                 for iife in iif.edges:
                     if iife.select == True:
-                        island_has_selection = True
-                        if iife.seam == False and len(iife.link_faces) < 2:
+                        if iife.seam == False and len(iife.link_faces) >= 2:
+                            island_has_selection = True
                             if selected_edge == None:
                                 selected_edge = iife
                     if iife not in island_edges:
@@ -2200,10 +2204,10 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
                 
                 for iel in init_edge.verts[0].link_loops:
                     if iel in island_loops:
-                        iel[uv_layer].uv = init_uva
+                        iel[uv_layer].uv = init_uva + island_add
                 for iel in init_edge.verts[1].link_loops:
                     if iel in island_loops:
-                        iel[uv_layer].uv = init_uvb
+                        iel[uv_layer].uv = init_uvb + island_add
 
                 verts_done = [init_edge.verts[0], init_edge.verts[1]]
                 
@@ -2237,40 +2241,29 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
                             print('\nSub-bundle', (bi + 1), 'of', len(this_bundle), '- vert index:', bundle[0].index, '- edge index:', bundle[1].index, '- UV position:', bundle[2], '- direction:', bundle[3])
                             loops_to_do = []
                             angles_to_do = []
-                            last_loop_index = 0
-                            baseline_angle = 0
                             angle_sum = 0.0
-                            if self.use_view_to_calc_rot:
-                                props.align_view3d_against_normal(bundle[0].normal, cur_view)
-                                props.set_view3d_lookat(bundle[0].co + oco)
-                                la, mat, vp, rot = props.view3d_details(cur_view)
-                                print('View3D - LookAt point:', la, '- Rotation:', rot)
-                                geo_center = bundle[0].co + oco
-                                v_center = props.viewco(geo_center)
-                                orig_vec = props.viewco(bundle[1].other_vert(bundle[0]).co + oco) - v_center
-                                orig_dir = orig_vec.normalized()
-                                for bli, bl in enumerate(bundle[0].link_loops):
-                                    bl_vec = props.viewco(bl.edge.other_vert(bundle[0]).co + oco) - v_center
-                                    bl_dir = bl_vec.normalized()
-                                    blangle = orig_dir.angle_signed(bl_dir)
-                                    angle_sum += math.degrees(bl.calc_angle())
-                                    loops_to_do.append(bl)
-                                    angles_to_do.append(math.degrees(blangle))
-                            else:
-                                for bli, bl in enumerate(bundle[0].link_loops):
-                                    angle_sum += math.degrees(bl.calc_angle())
-                                    if bl.edge == bundle[1]:
-                                        baseline_angle = angle_sum
-                                    loops_to_do.append(bl)
-                                    angles_to_do.append(angle_sum)
+
+                            p_co = bundle[0].co + oco
+                            p_up = bundle[0].normal.orthogonal()
+                            r_mat = mathutils.Matrix.Rotation(math.radians(90), 4, bundle[0].normal)
+                            p_right = p_up.copy()
+                            p_right.rotate(r_mat)
+                            orig_co = bundle[1].other_vert(bundle[0]).co + oco
+                            orig_vec = props.project_point_on_plane_axes(p_co, p_right, p_up, orig_co)
+                            orig_dir = orig_vec.normalized()
+
+                            for bli, bl in enumerate(bundle[0].link_loops):
+                                angle_sum += math.degrees(bl.calc_angle())
+                                bl_co = bl.edge.other_vert(bundle[0]).co + oco
+                                bl_vec = props.project_point_on_plane_axes(p_co, p_right, p_up, bl_co)
+                                bl_dir = bl_vec.normalized()
+                                blangle = orig_dir.angle_signed(bl_dir)
+                                loops_to_do.append(bl)
+                                angles_to_do.append(math.degrees(blangle))
+                            
                             angle_ratio = self.debug_fcd/angle_sum
                             print('Angle sum:', angle_sum)
                             print('Angle ratio = 1 :', angle_ratio)
-
-                            for angle_i, angle in enumerate(angles_to_do):
-                                new_angle = angle - baseline_angle
-                                angles_to_do[angle_i] = new_angle
-                            print('Angles:', angles_to_do)
 
                             loop_iter = 0
                             for this_loop, this_angle in zip(loops_to_do, angles_to_do):
@@ -2305,7 +2298,7 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
                                     if other_vert not in verts_done:
                                         for ovl in other_vert.link_loops:
                                             if ovl in island_loops:
-                                                ovl[uv_layer].uv = this_uvco
+                                                ovl[uv_layer].uv = this_uvco + island_add
                                         verts_done.append(other_vert)
                                         verts_done.append(bundle[0])
                                         new_bundle = [other_vert, this_loop.edge, this_uvco, -this_dir]
@@ -2314,46 +2307,6 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
                                         print('Added sub-bundle to bundle', next_bundle_i, 'which now contains', len(next_bundle), 'sub-bundles.')
                                 else:
                                     print('\nBundle', bundle_iter, '- Sub-bundle', (bi + 1), 'of', len(this_bundle), '- Loop', (loop_iter), 'of', len(loops_to_do), 'has origin edge! Skipping...')
-
-                            
-                            # while loop_iter < len(loops_to_do):
-                            #     loop_iter += 1
-                            #     this_index = int(math.fmod(last_loop_index + 1, len(loops_to_do)))
-                            #     this_loop = loops_to_do[this_index]
-                            #     this_angle = angles_to_do[this_index]
-                            #     dir_a = self.get_dir(bundle[0].co, bundle[1].other_vert(bundle[0]).co)
-                            #     dir_b = self.get_dir(bundle[0].co, this_loop.edge.other_vert(bundle[0]).co)
-                            #     print('Last/Current geo direction:', dir_a, '/' ,dir_b)
-                            #     # this_angle_deg = math.degrees(last_loop.calc_angle())
-                            #     this_angle_deg = dir_a.angle(dir_b)
-                            #     this_rot_deg = (math.degrees(this_angle_deg)/angle_sum) * 270
-                            #     print('Old/New angle:', math.degrees(this_angle_deg), '/' ,this_rot_deg)
-                            #     nudir_x = (bundle[3].x * math.cos(this_rot_deg)) - (bundle[3].y * math.sin(this_rot_deg))
-                            #     nudir_y = (bundle[3].x * math.sin(this_rot_deg)) + (bundle[3].y * math.cos(this_rot_deg))
-                            #     this_dir = mathutils.Vector((nudir_x,nudir_y)).normalized()
-                            #     print('Last/Current UV direction:', bundle[3], '/', this_dir)
-                            #     this_vec = this_dir * this_loop.edge.calc_length()
-                            #     this_uvco = bundle[2] + this_vec
-                            #     numin_x = min(min_x, this_uvco.x)
-                            #     min_x = numin_x
-                            #     numin_y = min(min_y, this_uvco.y)
-                            #     min_y = numin_y
-                            #     numax_x = max(max_x, this_uvco.x)
-                            #     max_x = numax_x
-                            #     numax_y = max(max_y, this_uvco.y)
-                            #     max_y = numax_y
-                            #     other_vert = this_loop.edge.other_vert(bundle[0])
-
-                            #     if other_vert not in verts_done:
-                            #         for ovl in other_vert.link_loops:
-                            #             if ovl in island_loops:
-                            #                 ovl[uv_layer].uv = this_uvco
-                            #         verts_done.append(other_vert)
-                            #         new_bundle = [other_vert, this_loop.edge, this_uvco, -this_dir]
-                            #         next_bundle.append(new_bundle)
-                            #         print(len(next_bundle))
-                            #     last_loop = this_loop
-                            #     last_loop_index = this_index
                         else:
                             print('Bundle', bundle_iter, '- Sub-bundle', sub_bundle_iter, 'invalid!')
 

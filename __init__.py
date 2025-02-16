@@ -108,6 +108,26 @@ class SloppyProperties(bpy.types.PropertyGroup):
         rotation = view.view_rotation
         return look_at, matrix, view_pos, rotation
     
+    def project_point_on_plane_normal(self, plane_center, plane_normal, point_co):
+        """ Returns a 2D vector of a point projected onto a plane given its center and normal """
+        plane_up = plane_normal.orthogonal()
+        right_rot_mat = mathutils.Matrix.Rotation(math.radians(90), 4, plane_normal)
+        plane_right = plane_up.copy()
+        plane_right.rotate(right_rot_mat)
+        V = point_co - plane_center
+        pt_x = V.dot(plane_right)
+        pt_y = V.dot(plane_up)
+        out_vec = mathutils.Vector((pt_x, pt_y))
+        return out_vec
+    
+    def project_point_on_plane_axes(self, plane_center, plane_x, plane_y, point_co):
+        """ Returns a 2D vector of a point projected onto a plane given its two axes """
+        V = point_co - plane_center
+        pt_x = V.dot(plane_x)
+        pt_y = V.dot(plane_y)
+        out_vec = mathutils.Vector((pt_x, pt_y))
+        return out_vec
+    
     def align_view3d_against_normal(self, normal, view3d):
         rot_quat = -normal.to_track_quat('Z', 'Y')
         view3d_region = None

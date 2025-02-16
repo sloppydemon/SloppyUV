@@ -45,29 +45,92 @@ class SloppyProperties(bpy.types.PropertyGroup):
         to that 3D view.'''
         view3d_region = None
         view3d = None
-        for scr in bpy.data.screens:
-            for ar in scr.areas:
-                if ar.type == 'VIEW_3D':
-                    view3d_region = ar.regions[0]
-                    for spc in ar.spaces:
-                        if spc.type == 'VIEW_3D':
-                            view3d = spc.region_3d
-                            break
+        for ar in bpy.context.screen.areas:
+            if ar.type == 'VIEW_3D':
+                view3d_region = ar.regions[0]
+                for spc in ar.spaces:
+                    if spc.type == 'VIEW_3D':
+                        view3d = spc.region_3d
+                        break
         outco = bpy_extras.view3d_utils.location_3d_to_region_2d(view3d_region, view3d, vec)
         return outco
+    
+    def get_view3d_region_and_space(self):
+        '''Fetches (TODO: active or) any View3D region and space.'''
+        view3d_region = None
+        view3d = None
+        for ar in bpy.context.screen.areas:
+            if ar.type == 'VIEW_3D':
+                view3d_region = ar.regions[0]
+                for spc in ar.spaces:
+                    if spc.type == 'VIEW_3D':
+                        view3d = spc.region_3d
+                        break
+        return view3d_region, view3d
+    
+    def set_view3d_lookat(self, position):
+        '''Fetches (TODO: active or) any View3D region and space.'''
+        view3d_region = None
+        view3d = None
+        for ar in bpy.context.screen.areas:
+            if ar.type == 'VIEW_3D':
+                view3d_region = ar.regions[0]
+                for spc in ar.spaces:
+                    if spc.type == 'VIEW_3D':
+                        view3d = spc.region_3d
+                        view3d.view_location = position
+    
+    def view3d_position(self, matrix):
+        """ From 4x4 matrix, calculate view3d location """
+        t = (matrix[0][3], matrix[1][3], matrix[2][3])
+        r = (
+        (matrix[0][0], matrix[0][1], matrix[0][2]),
+        (matrix[1][0], matrix[1][1], matrix[1][2]),
+        (matrix[2][0], matrix[2][1], matrix[2][2])
+        )
+        rp = (
+        (-r[0][0], -r[1][0], -r[2][0]),
+        (-r[0][1], -r[1][1], -r[2][1]),
+        (-r[0][2], -r[1][2], -r[2][2])
+        )
+        output = (
+        rp[0][0] * t[0] + rp[0][1] * t[1] + rp[0][2] * t[2],
+        rp[1][0] * t[0] + rp[1][1] * t[1] + rp[1][2] * t[2],
+        rp[2][0] * t[0] + rp[2][1] * t[1] + rp[2][2] * t[2],
+        )
+        return output
+
+    def view3d_details(self, view):
+        """ Return position, rotation data about a given view for the first space attached to it """
+        look_at = view.view_location
+        matrix = view.view_matrix
+        view_pos = self.view3d_position(matrix)
+        rotation = view.view_rotation
+        return look_at, matrix, view_pos, rotation
+    
+    def align_view3d_against_normal(self, normal, view3d):
+        rot_quat = -normal.to_track_quat('Z', 'Y')
+        view3d_region = None
+        view3d = None
+        for ar in bpy.context.screen.areas:
+            if ar.type == 'VIEW_3D':
+                view3d_region = ar.regions[0]
+                for spc in ar.spaces:
+                    if spc.type == 'VIEW_3D':
+                        view3d = spc.region_3d
+                        view3d.view_rotation = rot_quat
 
     def viewvec(self, loc):
         '''Fetch vectpr pointing from 3D View origin to point on screen'''
         view3d_region = None
         view3d = None
-        for scr in bpy.data.screens:
-            for ar in scr.areas:
-                if ar.type == 'VIEW_3D':
-                    view3d_region = ar.regions[0]
-                    for spc in ar.spaces:
-                        if spc.type == 'VIEW_3D':
-                            view3d = spc.region_3d
-                            break
+        for ar in bpy.context.screen.areas:
+            if ar.type == 'VIEW_3D':
+                view3d_region = ar.regions[0]
+                for spc in ar.spaces:
+                    if spc.type == 'VIEW_3D':
+                        view3d = spc.region_3d
+                        break
         outvec = bpy_extras.view3d_utils.region_2d_to_vector_3d(view3d_region, view3d, loc)
         
         return outvec.normalized()
@@ -288,6 +351,11 @@ class SloppyProperties(bpy.types.PropertyGroup):
 
     def calc_edge_center(self, edge):
         return(edge.verts[0].co.lerp(edge.verts[1].co, 0.5))
+    
+    def calc_edge_avg_normal(self, edge):
+        add_nor = edge.verts[0].normal + edge.verts[1].normal
+        avg_nor = add_nor.normalized()
+        return(avg_nor)
     
     def remap_val(self, val, in_min, in_max, out_min, out_max):
         in_interval = in_max - in_min
@@ -2452,6 +2520,79 @@ class SloppyShiftSelectByIndex(bpy.types.Operator):
 
 
 
+#region AlignViewToSel class
+class SloppyAlignViewToSelected(bpy.types.Operator):
+    bl_idname = "operator.align_view_to_selection"
+    bl_label = "Align View to Selected"
+    bl_description = "Points view at averaged selection, aligned against averaged normals"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    iP = bpy.props.IntProperty
+    fP = bpy.props.FloatProperty
+    fvP = bpy.props.FloatVectorProperty
+    bP = bpy.props.BoolProperty
+    eP = bpy.props.EnumProperty
+    bvP = bpy.props.BoolVectorProperty
+    sP = bpy.props.StringProperty
+
+    def execute(self, context):
+        props = context.scene.sloppy_props
+        mode = bpy.context.mode
+        cur_reg, cur_view = props.get_view3d_region_and_space()
+        
+        if mode == 'OBJECT':
+            objects = [obj for obj in bpy.context.scene.objects if obj.select_get() == True]
+            avg_loc = mathutils.Vector()
+            for obj in objects:
+                avg_loc += obj.location
+            avg_loc /= len(objects)
+            props.set_view3d_lookat(avg_loc)
+        if mode == 'EDIT_MESH':
+            objects = []
+            bms = []
+            for obj in bpy.context.objects_in_mode:
+                objects.append(obj)
+                bm = bmesh.from_edit_mesh(obj.data)
+                bms.append(bm)
+            avg_obj_loc = mathutils.Vector()
+            avg_loc = mathutils.Vector()
+            num_elements = 0
+            num_objects = 0
+            avg_nor = mathutils.Vector()
+            for ob, obm in zip(objects, bms):
+                has_selection = False
+                for v in obm.verts:
+                    if v.select == True:
+                        has_selection = True
+                        num_elements += 1
+                        avg_loc += v.co
+                        avg_nor += v.normal
+                for e in obm.edges:
+                    if e.select == True:
+                        has_selection = True
+                        num_elements += 1
+                        avg_loc += props.calc_edge_center(e)
+                        avg_nor += props.calc_edge_avg_normal(e)
+                for f in obm.faces:
+                    if f.select == True:
+                        has_selection = True
+                        num_elements += 1
+                        avg_loc += f.calc_center_median_weighted()
+                        avg_nor += f.normal
+                if has_selection:
+                    avg_obj_loc += ob.location
+                    num_objects += 1
+            avg_obj_loc /= num_objects
+            avg_loc /= num_elements
+            nor = avg_nor.normalized()
+            props.align_view3d_against_normal(nor, cur_view)
+            props.set_view3d_lookat(avg_loc + avg_obj_loc)
+        return {"FINISHED"}
+#endregion
+
+
+
+
 #region Initialization
 classes = [SloppyProperties,
            SloppyErrorDialog,
@@ -2481,6 +2622,7 @@ classes = [SloppyProperties,
            SloppyFlatQuadPanel,
            SloppyUVToMesh,
            RedoUVEdgeLength,
+           SloppyAlignViewToSelected,
            SloppyBasicUVUnfold
            ]
 

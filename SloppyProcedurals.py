@@ -2088,6 +2088,12 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
         description = "Restrict to UV islands with a selection",
         default=True
         ) # type: ignore
+    
+    debug_fcd : fP(
+        name = "Debug Circular Degrees",
+        description = "Should be 360? Use this to test if it shouldn't...",
+        default=360.0
+        ) # type: ignore
 
     #endregion
 
@@ -2106,7 +2112,6 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
         bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
         uv_layer = bm.loops.layers.uv.verify()
         islands = bmesh_utils.bmesh_linked_uv_islands(bm, uv_layer)
-        
         if len(islands) < 1:
             print('No islands, using all faces.')
             islands = [[face for face in bm.faces]]
@@ -2149,6 +2154,12 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
                     ie_is_boundary += 1
                 if ie.seam == True:
                     ie_is_seam += 1
+                for iev in ie.verts:
+                    for ieve in iev.link_edges:
+                        if len(ieve.link_faces) < 2:
+                            ie_is_boundary += 1
+                        if ieve.seam == True:
+                            ie_is_seam += 1
                 edge_bundle = [ie, (ie.verts[1].co - ie.verts[0].co).normalized(), ie_is_seam, ie_is_boundary]
                 island_edges_bundled.append(edge_bundle)
             
@@ -2164,6 +2175,8 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
                 if init_edge == None:
                     island_edges_bundled.sort(key=self.edge_bundle_sort)
                     init_edge = island_edges_bundled[0][0]
+                
+                init_edge = bm.edges[85]
 
                 print('Loops in island', ii, ':', len(island_loops))
 
@@ -2197,11 +2210,16 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
                     ]
                 ]
                 
+                bundle_iter = 0
                 while len(next_bundle) > 0:
+                    bundle_iter += 1
                     this_bundle = next_bundle.copy()
                     next_bundle.clear()
 
+                    sub_bundle_iter = 0
                     for bi, bundle in enumerate(this_bundle):
+                        sub_bundle_iter += 1
+                        print('Bundle', bundle_iter, '- Sub-bundle', sub_bundle_iter)
                         bundle_valid = True
                         for bve in bundle[0].link_edges:
                             if bve.seam == True:
@@ -2210,61 +2228,112 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
                                 bundle_valid = False
                         
                         if bundle_valid:
-                            print('Bundle', bi, 'of', len(this_bundle), '- vert index:', bundle[0].index, '- edge index:', bundle[1].index, '- UV position:', bundle[2], '- direction:', bundle[3])
+                            print('\nSub-bundle', (bi + 1), 'of', len(this_bundle), '- vert index:', bundle[0].index, '- edge index:', bundle[1].index, '- UV position:', bundle[2], '- direction:', bundle[3])
                             loops_to_do = []
-                            last_loop = None
+                            angles_to_do = []
                             last_loop_index = 0
-                            last_dir = bundle[3]
+                            baseline_angle = None
                             angle_sum = 0.0
                             for bli, bl in enumerate(bundle[0].link_loops):
                                 angle_sum += math.degrees(bl.calc_angle())
                                 if bl.edge == bundle[1]:
-                                    last_loop = bl
-                                    last_loop_index = bli
+                                    baseline_angle = angle_sum
                                 loops_to_do.append(bl)
-                            angle_ratio = 360/angle_sum
+                                angles_to_do.append(angle_sum)
+                            angle_ratio = self.debug_fcd/angle_sum
                             print('Angle sum:', angle_sum)
                             print('Angle ratio = 1 :', angle_ratio)
 
-                            loop_iter = 0
-                            while loop_iter < len(loops_to_do):
-                                loop_iter += 1
-                                this_index = int(math.fmod(last_loop_index + 1, len(loops_to_do)))
-                                this_loop = loops_to_do[this_index]
-                                dir_a = self.get_dir(bundle[0].co, bundle[1].other_vert(bundle[0]).co)
-                                dir_b = self.get_dir(bundle[0].co, this_loop.edge.other_vert(bundle[0]).co)
-                                print('Old dir/New dir:', dir_a, '/' ,dir_b)
-                                # this_angle_deg = math.degrees(last_loop.calc_angle())
-                                this_angle_deg = dir_a.angle(dir_b)
-                                this_rot_deg = (math.degrees(this_angle_deg)/angle_sum) * 360
-                                print('Old angle/New angle:', math.degrees(this_angle_deg), '/' ,this_rot_deg)
-                                nudir_x = (bundle[3].x * math.cos(this_rot_deg)) - (bundle[3].y * math.sin(this_rot_deg))
-                                nudir_y = (bundle[3].x * math.sin(this_rot_deg)) + (bundle[3].y * math.cos(this_rot_deg))
-                                this_dir = mathutils.Vector((nudir_x,nudir_y)).normalized()
-                                print('New direction:', this_dir)
-                                last_dir = this_dir
-                                this_vec = this_dir * this_loop.edge.calc_length()
-                                this_uvco = bundle[2] + this_vec
-                                numin_x = min(min_x, this_uvco.x)
-                                min_x = numin_x
-                                numin_y = min(min_y, this_uvco.y)
-                                min_y = numin_y
-                                numax_x = max(max_x, this_uvco.x)
-                                max_x = numax_x
-                                numax_y = max(max_y, this_uvco.y)
-                                max_y = numax_y
-                                other_vert = this_loop.edge.other_vert(bundle[0])
+                            for angle_i, angle in enumerate(angles_to_do):
+                                new_angle = angle - baseline_angle
+                                angles_to_do[angle_i] = new_angle
+                            print('Angles:', angles_to_do)
 
-                                if other_vert not in verts_done:
-                                    for ovl in other_vert.link_loops:
-                                        if ovl in island_loops:
-                                            ovl[uv_layer].uv = this_uvco
-                                    verts_done.append(other_vert)
-                                    new_bundle = [other_vert, this_loop.edge, this_uvco, -this_dir]
-                                    next_bundle.append(new_bundle)
-                                    print(len(next_bundle))
-                                last_loop = this_loop
-                                last_loop_index = this_index
+                            loop_iter = 0
+                            for this_loop, this_angle in zip(loops_to_do, angles_to_do):
+                                loop_iter += 1
+                                if this_loop.edge != bundle[1]:
+                                    print('\nBundle', bundle_iter, '- Sub-bundle', (bi + 1), 'of', len(this_bundle), '- Loop', (loop_iter), 'of', len(loops_to_do), ':')
+                                    this_rot_deg = (this_angle/angle_sum) * self.debug_fcd
+                                    dir_a = self.get_dir(bundle[0].co, bundle[1].other_vert(bundle[0]).co)
+                                    dir_b = self.get_dir(bundle[0].co, this_loop.edge.other_vert(bundle[0]).co)
+                                    print('Last/Current geo direction:', dir_a, '/' ,dir_b)
+                                    print('Actual/Calculated angle:', this_angle, '/' ,this_rot_deg)
+                                    # nudir_x = (bundle[3].x * math.cos(this_rot_deg)) - (bundle[3].y * math.sin(this_rot_deg))
+                                    # nudir_y = (bundle[3].x * math.sin(this_rot_deg)) + (bundle[3].y * math.cos(this_rot_deg))
+                                    # this_dir = mathutils.Vector((nudir_x,nudir_y)).normalized()
+                                    this_dir = mathutils.Vector((bundle[3].x,bundle[3].y))
+                                    this_matrix = mathutils.Matrix.Rotation(math.radians(this_rot_deg), 2, 'Z')
+                                    this_dir.rotate(this_matrix)
+                                    print('Last/Current UV direction:', bundle[3], '/', this_dir)
+                                    this_vec = this_dir * this_loop.edge.calc_length()
+                                    this_uvco = bundle[2] + this_vec
+                                    print('Source/Target UV position:', bundle[2], '/', this_uvco)
+                                    numin_x = min(min_x, this_uvco.x)
+                                    min_x = numin_x
+                                    numin_y = min(min_y, this_uvco.y)
+                                    min_y = numin_y
+                                    numax_x = max(max_x, this_uvco.x)
+                                    max_x = numax_x
+                                    numax_y = max(max_y, this_uvco.y)
+                                    max_y = numax_y
+                                    other_vert = this_loop.edge.other_vert(bundle[0])
+
+                                    if other_vert not in verts_done:
+                                        for ovl in other_vert.link_loops:
+                                            if ovl in island_loops:
+                                                ovl[uv_layer].uv = this_uvco
+                                        verts_done.append(other_vert)
+                                        verts_done.append(bundle[0])
+                                        new_bundle = [other_vert, this_loop.edge, this_uvco, -this_dir]
+                                        next_bundle.append(new_bundle)
+                                        next_bundle_i = bundle_iter + 1
+                                        print('Added sub-bundle to bundle', next_bundle_i, 'which now contains', len(next_bundle), 'sub-bundles.')
+                                else:
+                                    print('\nBundle', bundle_iter, '- Sub-bundle', (bi + 1), 'of', len(this_bundle), '- Loop', (loop_iter), 'of', len(loops_to_do), 'has origin edge! Skipping...')
+
+                            
+                            # while loop_iter < len(loops_to_do):
+                            #     loop_iter += 1
+                            #     this_index = int(math.fmod(last_loop_index + 1, len(loops_to_do)))
+                            #     this_loop = loops_to_do[this_index]
+                            #     this_angle = angles_to_do[this_index]
+                            #     dir_a = self.get_dir(bundle[0].co, bundle[1].other_vert(bundle[0]).co)
+                            #     dir_b = self.get_dir(bundle[0].co, this_loop.edge.other_vert(bundle[0]).co)
+                            #     print('Last/Current geo direction:', dir_a, '/' ,dir_b)
+                            #     # this_angle_deg = math.degrees(last_loop.calc_angle())
+                            #     this_angle_deg = dir_a.angle(dir_b)
+                            #     this_rot_deg = (math.degrees(this_angle_deg)/angle_sum) * 270
+                            #     print('Old/New angle:', math.degrees(this_angle_deg), '/' ,this_rot_deg)
+                            #     nudir_x = (bundle[3].x * math.cos(this_rot_deg)) - (bundle[3].y * math.sin(this_rot_deg))
+                            #     nudir_y = (bundle[3].x * math.sin(this_rot_deg)) + (bundle[3].y * math.cos(this_rot_deg))
+                            #     this_dir = mathutils.Vector((nudir_x,nudir_y)).normalized()
+                            #     print('Last/Current UV direction:', bundle[3], '/', this_dir)
+                            #     this_vec = this_dir * this_loop.edge.calc_length()
+                            #     this_uvco = bundle[2] + this_vec
+                            #     numin_x = min(min_x, this_uvco.x)
+                            #     min_x = numin_x
+                            #     numin_y = min(min_y, this_uvco.y)
+                            #     min_y = numin_y
+                            #     numax_x = max(max_x, this_uvco.x)
+                            #     max_x = numax_x
+                            #     numax_y = max(max_y, this_uvco.y)
+                            #     max_y = numax_y
+                            #     other_vert = this_loop.edge.other_vert(bundle[0])
+
+                            #     if other_vert not in verts_done:
+                            #         for ovl in other_vert.link_loops:
+                            #             if ovl in island_loops:
+                            #                 ovl[uv_layer].uv = this_uvco
+                            #         verts_done.append(other_vert)
+                            #         new_bundle = [other_vert, this_loop.edge, this_uvco, -this_dir]
+                            #         next_bundle.append(new_bundle)
+                            #         print(len(next_bundle))
+                            #     last_loop = this_loop
+                            #     last_loop_index = this_index
+                        else:
+                            print('Bundle', bundle_iter, '- Sub-bundle', sub_bundle_iter, 'invalid!')
+
 
                                 
                             

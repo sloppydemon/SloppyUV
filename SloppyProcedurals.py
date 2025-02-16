@@ -2089,6 +2089,12 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
         default=True
         ) # type: ignore
     
+    use_view_to_calc_rot : bP(
+        name = "Use View3D to Calculate Rotations",
+        description = "",
+        default=True
+        ) # type: ignore
+    
     debug_fcd : fP(
         name = "Debug Circular Degrees",
         description = "Should be 360? Use this to test if it shouldn't...",
@@ -2110,11 +2116,13 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
     def execute(self, context):
         props = context.scene.sloppy_props
         bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
+        oco = bpy.context.active_object.location
         uv_layer = bm.loops.layers.uv.verify()
         islands = bmesh_utils.bmesh_linked_uv_islands(bm, uv_layer)
         if len(islands) < 1:
             print('No islands, using all faces.')
             islands = [[face for face in bm.faces]]
+        cur_region, cur_view = props.get_view3d_region_and_space()
 
         bm.verts.ensure_lookup_table()
         bm.edges.ensure_lookup_table()
@@ -2175,8 +2183,6 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
                 if init_edge == None:
                     island_edges_bundled.sort(key=self.edge_bundle_sort)
                     init_edge = island_edges_bundled[0][0]
-                
-                init_edge = bm.edges[85]
 
                 print('Loops in island', ii, ':', len(island_loops))
 
@@ -2232,14 +2238,31 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
                             loops_to_do = []
                             angles_to_do = []
                             last_loop_index = 0
-                            baseline_angle = None
+                            baseline_angle = 0
                             angle_sum = 0.0
-                            for bli, bl in enumerate(bundle[0].link_loops):
-                                angle_sum += math.degrees(bl.calc_angle())
-                                if bl.edge == bundle[1]:
-                                    baseline_angle = angle_sum
-                                loops_to_do.append(bl)
-                                angles_to_do.append(angle_sum)
+                            if self.use_view_to_calc_rot:
+                                props.align_view3d_against_normal(bundle[0].normal, cur_view)
+                                props.set_view3d_lookat(bundle[0].co + oco)
+                                la, mat, vp, rot = props.view3d_details(cur_view)
+                                print('View3D - LookAt point:', la, '- Rotation:', rot)
+                                geo_center = bundle[0].co + oco
+                                v_center = props.viewco(geo_center)
+                                orig_vec = props.viewco(bundle[1].other_vert(bundle[0]).co + oco) - v_center
+                                orig_dir = orig_vec.normalized()
+                                for bli, bl in enumerate(bundle[0].link_loops):
+                                    bl_vec = props.viewco(bl.edge.other_vert(bundle[0]).co + oco) - v_center
+                                    bl_dir = bl_vec.normalized()
+                                    blangle = orig_dir.angle_signed(bl_dir)
+                                    angle_sum += math.degrees(bl.calc_angle())
+                                    loops_to_do.append(bl)
+                                    angles_to_do.append(math.degrees(blangle))
+                            else:
+                                for bli, bl in enumerate(bundle[0].link_loops):
+                                    angle_sum += math.degrees(bl.calc_angle())
+                                    if bl.edge == bundle[1]:
+                                        baseline_angle = angle_sum
+                                    loops_to_do.append(bl)
+                                    angles_to_do.append(angle_sum)
                             angle_ratio = self.debug_fcd/angle_sum
                             print('Angle sum:', angle_sum)
                             print('Angle ratio = 1 :', angle_ratio)

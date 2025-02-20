@@ -2306,16 +2306,21 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
                                     other_vert = this_loop.edge.other_vert(bundle[0])
 
                                     if other_vert not in verts_done:
-                                        for ovl in other_vert.link_loops:
-                                            if ovl in island_loops:
-                                                ovl[uv_layer].uv = this_uvco + island_add
-                                                ovl[uv_layer].pin_uv = True
+                                        is_seam_vert = False
+                                        for ove in other_vert.link_edges:
+                                            if ove.seam == True:
+                                                is_seam_vert = True
+                                        if is_seam_vert == False:
+                                            for ovl in other_vert.link_loops:
+                                                if ovl in island_loops:
+                                                    ovl[uv_layer].uv = this_uvco + island_add
+                                                    ovl[uv_layer].pin_uv = True
+                                            new_bundle = [other_vert, this_loop.edge, this_uvco, -this_dir]
+                                            next_bundle.append(new_bundle)
+                                            next_bundle_i = bundle_iter + 1
+                                            print('Added sub-bundle to bundle', next_bundle_i, 'which now contains', len(next_bundle), 'sub-bundles.')
                                         verts_done.append(other_vert)
                                         verts_done.append(bundle[0])
-                                        new_bundle = [other_vert, this_loop.edge, this_uvco, -this_dir]
-                                        next_bundle.append(new_bundle)
-                                        next_bundle_i = bundle_iter + 1
-                                        print('Added sub-bundle to bundle', next_bundle_i, 'which now contains', len(next_bundle), 'sub-bundles.')
                                 else:
                                     print('\nBundle', bundle_iter, '- Sub-bundle', (bi + 1), 'of', len(this_bundle), '- Loop', (loop_iter), 'of', len(loops_to_do), 'has origin edge! Skipping...')
                         else:

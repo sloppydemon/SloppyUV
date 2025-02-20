@@ -2136,50 +2136,60 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
             if area.type == 'IMAGE_EDITOR':   #find the UVeditor
                 curpos = area.spaces.active.cursor_location
 
-        for ii, island in enumerate(islands):
-            island_add = mathutils.Vector((self.per_island_uv_add[0], self.per_island_uv_add[1])) * ii
+        should_do_islands = []
+
+        for island in islands:
             island_has_selection = False
-            island_edges = []
-            island_loops = []
-            selected_edge = None
+            should_do = True
             for iif in island:
                 if iif.select == True:
                     island_has_selection = True
-                for iifl in iif.loops:
-                    if iifl.vert.select == True:
-                        island_has_selection = True
-                    if iifl not in island_loops:
-                        island_loops.append(iifl)
                 for iife in iif.edges:
                     if iife.select == True:
                         if iife.seam == False and len(iife.link_faces) >= 2:
                             island_has_selection = True
-                            if selected_edge == None:
-                                selected_edge = iife
-                    if iife not in island_edges:
-                        island_edges.append(iife)
-            island_edges_bundled = []
-            for ie in island_edges:
-                ie_is_seam = 0
-                ie_is_boundary = 0
-                if len(ie.link_faces) < 2:
-                    ie_is_boundary += 1
-                if ie.seam == True:
-                    ie_is_seam += 1
-                for iev in ie.verts:
-                    for ieve in iev.link_edges:
-                        if len(ieve.link_faces) < 2:
-                            ie_is_boundary += 1
-                        if ieve.seam == True:
-                            ie_is_seam += 1
-                edge_bundle = [ie, (ie.verts[1].co - ie.verts[0].co).normalized(), ie_is_seam, ie_is_boundary]
-                island_edges_bundled.append(edge_bundle)
             
-            should_do_island = True
             if self.only_islands_with_selection == True:
-                should_do_island = island_has_selection
+                should_do = island_has_selection
+            
+            should_do_islands.append(should_do)
 
+        island_iter = 0
+        for island, should_do_island in zip(islands, should_do_islands):
             if should_do_island == True:
+                island_add = mathutils.Vector((self.per_island_uv_add[0], self.per_island_uv_add[1])) * island_iter
+                island_edges = []
+                island_loops = []
+                selected_edge = None
+                for iif in island:
+                    for iifl in iif.loops:
+                        if iifl not in island_loops:
+                            island_loops.append(iifl)
+                    for iife in iif.edges:
+                        if iife.select == True:
+                            if iife.seam == False and len(iife.link_faces) >= 2:
+                                if selected_edge == None:
+                                    selected_edge = iife
+                        if iife not in island_edges:
+                            island_edges.append(iife)
+                
+                island_edges_bundled = []
+                for ie in island_edges:
+                    ie_is_seam = 0
+                    ie_is_boundary = 0
+                    if len(ie.link_faces) < 2:
+                        ie_is_boundary += 1
+                    if ie.seam == True:
+                        ie_is_seam += 1
+                    for iev in ie.verts:
+                        for ieve in iev.link_edges:
+                            if len(ieve.link_faces) < 2:
+                                ie_is_boundary += 1
+                            if ieve.seam == True:
+                                ie_is_seam += 1
+                    edge_bundle = [ie, (ie.verts[1].co - ie.verts[0].co).normalized(), ie_is_seam, ie_is_boundary]
+                    island_edges_bundled.append(edge_bundle)
+            
                 init_edge = None
 
                 if self.initial_edge_mode == "B":
@@ -2188,14 +2198,14 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
                     island_edges_bundled.sort(key=self.edge_bundle_sort)
                     init_edge = island_edges_bundled[0][0]
 
-                print('Loops in island', ii, ':', len(island_loops))
+                print('Loops in island', island_iter, ':', len(island_loops))
 
                 init_pos = mathutils.Vector((0.5, 0.5))
                 if self.transform_pivot == "B":
                     init_pos = curpos
                 
-                init_uva = mathutils.Vector((init_pos.x - (init_edge.calc_length() / 2), init_pos.y))
-                init_uvb = mathutils.Vector((init_pos.x + (init_edge.calc_length() / 2), init_pos.y))
+                init_uva = mathutils.Vector((init_pos.x + (init_edge.calc_length() / 2), init_pos.y))
+                init_uvb = mathutils.Vector((init_pos.x - (init_edge.calc_length() / 2), init_pos.y))
 
                 min_x = init_uva.x
                 min_y = init_uva.y
@@ -2213,10 +2223,10 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
                 
                 next_bundle = [
                     [
-                        init_edge.verts[0], init_edge, init_uva, mathutils.Vector((1,0))
+                        init_edge.verts[0], init_edge, init_uva, mathutils.Vector((-1,0))
                     ],
                     [
-                        init_edge.verts[1], init_edge, init_uvb, mathutils.Vector((-1,0))
+                        init_edge.verts[1], init_edge, init_uvb, mathutils.Vector((1,0))
                     ]
                 ]
                 
@@ -2299,6 +2309,7 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
                                         for ovl in other_vert.link_loops:
                                             if ovl in island_loops:
                                                 ovl[uv_layer].uv = this_uvco + island_add
+                                                ovl[uv_layer].pin_uv = True
                                         verts_done.append(other_vert)
                                         verts_done.append(bundle[0])
                                         new_bundle = [other_vert, this_loop.edge, this_uvco, -this_dir]
@@ -2309,21 +2320,23 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
                                     print('\nBundle', bundle_iter, '- Sub-bundle', (bi + 1), 'of', len(this_bundle), '- Loop', (loop_iter), 'of', len(loops_to_do), 'has origin edge! Skipping...')
                         else:
                             print('Bundle', bundle_iter, '- Sub-bundle', sub_bundle_iter, 'invalid!')
-
-
-                                
-                            
-                
                 x_diff = max_x - min_x
                 y_diff = max_y - min_y
                 if x_diff > y_diff:
                     pass
                 if x_diff < y_diff:
                     pass
-            
-
-
+                
+                for face in island:
+                    face.select_set(True)
         bpy.context.active_object.data.update()
+
+        bpy.ops.uv.unwrap(method='ANGLE_BASED', fill_holes=True, correct_aspect=True, use_subsurf_data=False, margin=0, no_flip=False, iterations=10, use_weights=False, weight_group="uv_importance", weight_factor=1)
+
+        for face in bm.faces:
+            for loop in face.loops:
+                loop[uv_layer].pin_uv = False
+
 
         return {"FINISHED"}
 # endregion

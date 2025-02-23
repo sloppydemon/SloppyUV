@@ -140,6 +140,34 @@ class SloppyProperties(bpy.types.PropertyGroup):
                         view3d = spc.region_3d
                         view3d.view_rotation = rot_quat
 
+    def line_up_exe(times = 1):
+        str = ''
+        CURSOR_UP = '\033[F'
+        for i in range(times):
+            str += CURSOR_UP
+        print(str)
+
+    def line_del_exe(times = 1):
+        str = ''
+        ERASE_LINE = '\033[K'
+        for i in range(times):
+            str += ERASE_LINE
+        print(str)
+
+    def line_up(times = 1):
+        str = ''
+        CURSOR_UP = '\033[F'
+        for i in range(times):
+            str += CURSOR_UP
+        return(str)
+
+    def line_del(times = 1):
+        str = ''
+        ERASE_LINE = '\033[K'
+        for i in range(times):
+            str += ERASE_LINE
+        return(str)
+
     def viewvec(self, loc):
         '''Fetch vectpr pointing from 3D View origin to point on screen'''
         view3d_region = None

@@ -128,6 +128,134 @@ class SloppyProperties(bpy.types.PropertyGroup):
         out_vec = mathutils.Vector((pt_x, pt_y))
         return out_vec
     
+    def get_dir(self, co_source, co_destination):
+        vec = co_destination - co_source
+        dir = vec.normalized()
+        return dir
+    
+    def sort_key_second_item_in_list_of_lists_item(self, list_of_lists_item):
+        return list_of_lists_item[1]
+    
+    def find_contiguous_seams(self, bm, select_seam_by_index = False, select_index = 0, verbose = False):
+        """ Returns lists (seams, face corners to the right, face corners to the left) of contiguous seams (which way is contiguous at crossroad seams will be decided according to which next seam is most well-aligned with the last) and two lists of face corners belonging on either side of the seam """
+        seams = []
+        loops_l = []
+        loops_r = []
+        seam_edges_total = []
+        seam_edges_todo = []
+        seam_edges_done = []
+
+        for edge in bm.edges:
+            if edge.seam == True:
+                seam_edges_total.append(edge)
+                seam_edges_todo.append(edge)
+        
+        while (len(seam_edges_total) - len(seam_edges_done)) > 0:
+            this_seam = []
+            these_loops_l = []
+            these_loops_r = []
+            init_edge = seam_edges_todo[0]
+            init_edge_normal = self.calc_edge_avg_normal(init_edge)
+            r_rot_mat = mathutils.Matrix.Rotation(math.radians(90), 4, init_edge_normal)
+            init_edge_dir = self.get_dir(init_edge.verts[0].co, init_edge.verts[1].co)
+            this_r = init_edge_dir.copy()
+            this_r.rotate(r_rot_mat)
+
+            for loop in init_edge.link_loops:
+                loop_tan = loop.calc_tangent()
+                tan_dot = loop_tan.dot(this_r)
+                if tan_dot > 0.0:
+                    these_loops_r.append(loop)
+                if tan_dot < 0.0:
+                    these_loops_l.append(loop)
+
+            init_sub_bundle_a = [init_edge.verts[0], 0, -1, init_edge, -init_edge_dir]
+            init_sub_bundle_b = [init_edge.verts[1], 0, 1, init_edge, init_edge_dir]
+            next_bundle = [init_sub_bundle_a, init_sub_bundle_b]
+
+            this_seam.append([init_edge, 0])
+
+            if init_edge not in seam_edges_done:
+                seam_edges_done.append(init_edge)
+            if init_edge in seam_edges_todo:
+                seam_edges_todo.remove(init_edge)
+
+            while len(next_bundle) > 0:
+                this_bundle = next_bundle.copy()
+                next_bundle.clear()
+                for sb in this_bundle:
+                    next_edge = None
+                    seam_cand = []
+
+                    for sbe in sb[0].link_edges:
+                        if sbe != sb[3]:
+                            if sbe.seam == True:
+                                if sbe not in seam_edges_done:
+                                    sbe_dir = self.get_dir(sb[0].co, sbe.other_vert(sb[0]).co)
+                                    sbe_dot = sbe_dir.dot(sb[4])
+                                    seam_cand.append([sbe, sbe_dot])
+                    if len(seam_cand) > 0:
+                        if len(seam_cand) > 1:
+                            seam_cand.sort(key=self.sort_key_second_item_in_list_of_lists_item, reverse=True)
+                        next_edge = seam_cand[0][0]
+                    
+                    if next_edge:
+                        sb_ov = next_edge.other_vert(sb[0])
+                        sb_dir = self.get_dir(sb[0].co, sb_ov.co)
+                        if sb[2] == -1:
+                            sb_dir *= -1
+                        sb_normal = self.calc_edge_avg_normal(next_edge)
+                        sb_r_rot_mat = mathutils.Matrix.Rotation(math.radians(90), 4, sb_normal)
+                        sb_r = sb_dir.copy()
+                        sb_r.rotate(sb_r_rot_mat)
+
+                        for nel in next_edge.link_loops:
+                            nel_tan = nel.calc_tangent()
+                            ne_tan_dot = nel_tan.dot(this_r)
+                            if ne_tan_dot > 0.0:
+                                these_loops_r.append(nel)
+                            if ne_tan_dot < 0.0:
+                                these_loops_l.append(nel)
+
+                        sb_sort_val = sb[1] + sb[2]
+
+                        ne_bundle = [sb_ov, sb_sort_val, sb[2], next_edge, sb_dir]
+                        next_bundle.append(ne_bundle)
+
+                        this_seam.append([next_edge, sb_sort_val])
+
+                        if next_edge not in seam_edges_done:
+                            seam_edges_done.append(next_edge)
+                        if next_edge in seam_edges_todo:
+                            seam_edges_todo.remove(next_edge)
+            
+            this_seam.sort(key=self.sort_key_second_item_in_list_of_lists_item)
+
+            this_seam_clean = [i[0] for i in this_seam]
+
+            seams.append(this_seam_clean)
+            loops_l.append(these_loops_l)
+            loops_r.append(these_loops_r)
+
+            num_remain = len(seam_edges_total) - len(seam_edges_done)
+            if verbose:
+                print('Number of seams total:', len(seam_edges_total), '\nNumber of seams done:', len(seam_edges_done), '\nNumber of seams remaining:', num_remain)
+        
+        if select_seam_by_index:
+            for sme in seams[select_index]:
+                sme.select_set(True)
+            bpy.context.active_object.data.update()
+
+        if verbose:
+            print('Number of contiguous seams:', len(seams))
+            for smi, sm in enumerate(seams):
+                smis = []
+                for sme in sm:
+                    smis.append(sme.index)
+                print('Seam',(smi+1),'- length',len(smis),'=',smis)
+
+        return seams, loops_r, loops_l
+    
     def align_view3d_against_normal(self, normal, view3d):
         rot_quat = -normal.to_track_quat('Z', 'Y')
         view3d_region = None
@@ -400,10 +528,17 @@ class SloppyProperties(bpy.types.PropertyGroup):
     def calc_edge_center(self, edge):
         return(edge.verts[0].co.lerp(edge.verts[1].co, 0.5))
     
-    def calc_edge_avg_normal(self, edge):
-        add_nor = edge.verts[0].normal + edge.verts[1].normal
-        avg_nor = add_nor.normalized()
-        return(avg_nor)
+    def calc_edge_avg_normal(self, edge, use_faces = False):
+        if use_faces:
+            add_nor = mathutils.Vector((0,0,0))
+            for face in edge.link_faces:
+                add_nor += face.normal
+            avg_nor = add_nor.normalized()
+            return(avg_nor)
+        else:
+            add_nor = edge.verts[0].normal + edge.verts[1].normal
+            avg_nor = add_nor.normalized()
+            return(avg_nor)
     
     def remap_val(self, val, in_min, in_max, out_min, out_max):
         in_interval = in_max - in_min

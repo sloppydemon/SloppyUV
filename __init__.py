@@ -136,7 +136,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
     def sort_key_second_item_in_list_of_lists_item(self, list_of_lists_item):
         return list_of_lists_item[1]
     
-    def find_contiguous_seams(self, bm, select_seam_by_index = False, select_index = 0, verbose = False):
+    def find_contiguous_seams(self, bm, select_seams_by_index = False, select_index_start = 0, select_index_end = 0, verbose = False):
         """ Returns lists (seams, face corners to the right, face corners to the left) of contiguous seams (which way is contiguous at crossroad seams will be decided according to which next seam is most well-aligned with the last) and two lists of face corners belonging on either side of the seam """
         seams = []
         loops_l = []
@@ -241,9 +241,21 @@ class SloppyProperties(bpy.types.PropertyGroup):
             if verbose:
                 print('Number of seams total:', len(seam_edges_total), '\nNumber of seams done:', len(seam_edges_done), '\nNumber of seams remaining:', num_remain)
         
-        if select_seam_by_index:
-            for sme in seams[select_index]:
-                sme.select_set(True)
+        if select_seams_by_index:
+            i_s = int(bl_math.clamp(float(select_index_start), 0, float(len(seams)-1)))
+            i_e = int(bl_math.clamp(float(select_index_end), 0, float(len(seams)-1)))
+
+            if i_s == i_e:
+                for sme in seams[i_s]:
+                    sme.select_set(True)
+            elif i_e < i_s:
+                for i in range(i_e, i_s + 1):
+                    for sme in seams[i]:
+                        sme.select_set(True)
+            else:
+                for i in range(i_s, i_e + 1):
+                    for sme in seams[i]:
+                        sme.select_set(True)
             bpy.context.active_object.data.update()
 
         if verbose:
@@ -252,7 +264,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
                 smis = []
                 for sme in sm:
                     smis.append(sme.index)
-                print('Seam',(smi+1),'- length',len(smis),'=',smis)
+                print('Seam',(smi),'- length',len(smis),'=',smis)
 
         return seams, loops_r, loops_l
     
@@ -2703,6 +2715,58 @@ class SloppyShiftSelectByIndex(bpy.types.Operator):
 
 
 
+#region ShiftSelectByIndex class
+class SloppyFindContiguousSeams(bpy.types.Operator):
+    bl_idname = "operator.find_contiguous_seams"
+    bl_label = "Find Contiguous Seams"
+    bl_description = "Returns lists (seams, face corners to the right, face corners to the left) of contiguous seams (which way is contiguous at crossroad seams will be decided according to which next seam is most well-aligned with the last) and two lists of face corners belonging on either side of the seam"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    iP = bpy.props.IntProperty
+    fP = bpy.props.FloatProperty
+    fvP = bpy.props.FloatVectorProperty
+    bP = bpy.props.BoolProperty
+    eP = bpy.props.EnumProperty
+    bvP = bpy.props.BoolVectorProperty
+    sP = bpy.props.StringProperty
+
+    max_i = 999999999
+
+    sel_seams_by_i : bP(
+        name = "Select Seams by Index",
+        description = "Force the element domain to select",
+        default = False
+        ) # type: ignore
+
+    sel_i_start : iP(
+        name = "Start Index",
+        description = "",
+        default = 0
+        ) # type: ignore
+
+    sel_i_end : iP(
+        name = "End Index",
+        description = "",
+        default = 0
+        ) # type: ignore
+
+    verbose : bP(
+        name = "Verbose",
+        description = "Print debug information to system console",
+        default = False
+        ) # type: ignore
+
+    def execute(self, context):
+        props = context.scene.sloppy_props
+        in_bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
+        props.find_contiguous_seams(in_bm, self.sel_seams_by_i, self.sel_i_start, self.sel_i_end, self.verbose)
+        
+        return {"FINISHED"}
+#endregion
+
+
+
+
 #region AlignViewToSel class
 class SloppyAlignViewToSelected(bpy.types.Operator):
     bl_idname = "operator.align_view_to_selection"
@@ -2806,6 +2870,7 @@ classes = [SloppyProperties,
            SloppyUVToMesh,
            RedoUVEdgeLength,
            SloppyAlignViewToSelected,
+           SloppyFindContiguousSeams,
            SloppyBasicUVUnfold
            ]
 

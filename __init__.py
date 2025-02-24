@@ -155,19 +155,32 @@ class SloppyProperties(bpy.types.PropertyGroup):
             these_loops_l = []
             these_loops_r = []
             init_edge = seam_edges_todo[0]
-            init_edge_normal = self.calc_edge_avg_normal(init_edge)
+            init_edge_normal = self.calc_edge_avg_normal(init_edge, True)
             r_rot_mat = mathutils.Matrix.Rotation(math.radians(90), 4, init_edge_normal)
             init_edge_dir = self.get_dir(init_edge.verts[0].co, init_edge.verts[1].co)
             this_r = init_edge_dir.copy()
             this_r.rotate(r_rot_mat)
 
-            for loop in init_edge.link_loops:
-                loop_tan = loop.calc_tangent()
-                tan_dot = loop_tan.dot(this_r)
-                if tan_dot > 0.0:
-                    these_loops_r.append(loop)
-                if tan_dot < 0.0:
-                    these_loops_l.append(loop)
+            # for loop in init_edge.link_loops:
+            #     loop_tan = loop.calc_tangent()
+            #     tan_dot = loop_tan.dot(this_r)
+            #     if tan_dot > 0.0:
+            #         these_loops_r.append(loop)
+            #     if tan_dot < 0.0:
+            #         these_loops_l.append(loop)
+            
+            for iev in init_edge.verts:
+                for ievl in iev.link_loops:
+                    ievl_tan = ievl.calc_tangent()
+                    # ievl_tan += self.get_dir(self.calc_edge_center(init_edge), ievl.face.calc_center_bounds())
+                    ievl_tan_nor = ievl_tan.normalized()
+                    ie_tan_dot = ievl_tan.dot(this_r)
+                    if ie_tan_dot > 0.0:
+                        if ievl not in these_loops_r and ievl not in these_loops_l:
+                            these_loops_r.append(ievl)
+                    if ie_tan_dot <= 0.0:
+                        if ievl not in these_loops_l and ievl not in these_loops_r:
+                            these_loops_l.append(ievl)
 
             init_sub_bundle_a = [init_edge.verts[0], 0, -1, init_edge, -init_edge_dir]
             init_sub_bundle_b = [init_edge.verts[1], 0, 1, init_edge, init_edge_dir]
@@ -204,18 +217,23 @@ class SloppyProperties(bpy.types.PropertyGroup):
                         sb_dir = self.get_dir(sb[0].co, sb_ov.co)
                         if sb[2] == -1:
                             sb_dir *= -1
-                        sb_normal = self.calc_edge_avg_normal(next_edge)
+                        sb_normal = self.calc_edge_avg_normal(next_edge, True)
                         sb_r_rot_mat = mathutils.Matrix.Rotation(math.radians(90), 4, sb_normal)
                         sb_r = sb_dir.copy()
                         sb_r.rotate(sb_r_rot_mat)
 
-                        for nel in next_edge.link_loops:
-                            nel_tan = nel.calc_tangent()
-                            ne_tan_dot = nel_tan.dot(this_r)
-                            if ne_tan_dot > 0.0:
-                                these_loops_r.append(nel)
-                            if ne_tan_dot < 0.0:
-                                these_loops_l.append(nel)
+                        for nev in next_edge.verts:
+                            for nevl in nev.link_loops:
+                                nevl_tan = nevl.calc_tangent()
+                                # nevl_tan += self.get_dir(self.calc_edge_center(next_edge), nevl.face.calc_center_bounds())
+                                nevl_tan_nor = nevl_tan.normalized()
+                                ne_tan_dot = nevl_tan.dot(sb_r)
+                                if ne_tan_dot > 0.0:
+                                    if nevl not in these_loops_r and nevl not in these_loops_l:
+                                        these_loops_r.append(nevl)
+                                if ne_tan_dot <= 0.0:
+                                    if nevl not in these_loops_l and nevl not in these_loops_r:
+                                        these_loops_l.append(nevl)
 
                         sb_sort_val = sb[1] + sb[2]
 
@@ -2715,7 +2733,7 @@ class SloppyShiftSelectByIndex(bpy.types.Operator):
 
 
 
-#region ShiftSelectByIndex class
+#region FindCont.Seams class
 class SloppyFindContiguousSeams(bpy.types.Operator):
     bl_idname = "operator.find_contiguous_seams"
     bl_label = "Find Contiguous Seams"
@@ -2750,6 +2768,12 @@ class SloppyFindContiguousSeams(bpy.types.Operator):
         default = 0
         ) # type: ignore
 
+    add_debug_attributes : bP(
+        name = "Generate Debug Attribute",
+        description = "Generate color attributes to debug seam sides",
+        default = False
+        ) # type: ignore
+
     verbose : bP(
         name = "Verbose",
         description = "Print debug information to system console",
@@ -2759,8 +2783,41 @@ class SloppyFindContiguousSeams(bpy.types.Operator):
     def execute(self, context):
         props = context.scene.sloppy_props
         in_bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
-        props.find_contiguous_seams(in_bm, self.sel_seams_by_i, self.sel_i_start, self.sel_i_end, self.verbose)
+        sms, lsr, lsl = props.find_contiguous_seams(in_bm, self.sel_seams_by_i, self.sel_i_start, self.sel_i_end, self.verbose)
         
+        if self.add_debug_attributes:
+            props.find_or_add_attribute("seam_side", "FLOAT_COLOR", "CORNER")
+            props.find_or_add_attribute("normalized_seam_index", "FLOAT", "EDGE")
+            props.find_or_add_attribute("normalized_seam_sequence", "FLOAT", "EDGE")
+            seam_side = props.get_attribute_layer("seam_side", "FLOAT_COLOR", "CORNER", in_bm)
+            normalized_seam_index = props.get_attribute_layer("normalized_seam_index", "FLOAT", "EDGE", in_bm)
+            normalized_seam_sequence = props.get_attribute_layer("normalized_seam_sequence", "FLOAT", "EDGE", in_bm)
+
+            colr = mathutils.Color((0,1,0))
+            coll = mathutils.Color((1,0,0))
+
+            for smsi, sm in enumerate(sms):
+                nor_sm_i = 0
+                if len(sms) > 1:
+                    nor_sm_i = smsi/(len(sms) - 1)
+                for smi, sme in enumerate(sm):
+                    sme[normalized_seam_index] = nor_sm_i
+                    nor_sm_seq = 1.0
+                    if len(sm) > 1:
+                        nor_sm_seq = smi/(len(sm) - 1)
+                    sme[normalized_seam_sequence] = nor_sm_seq
+            
+            for lrs, lls in zip(lsr, lsl):
+                for lrl, lll in zip(lrs, lls):
+                    lrl[seam_side].x = colr.r
+                    lrl[seam_side].y = colr.g
+                    lrl[seam_side].z = colr.b
+                    lll[seam_side].x = coll.r
+                    lll[seam_side].y = coll.g
+                    lll[seam_side].z = coll.b
+
+            bpy.context.active_object.data.update()
+
         return {"FINISHED"}
 #endregion
 

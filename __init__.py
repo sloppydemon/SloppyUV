@@ -1,6 +1,7 @@
 import bpy
 import bpy_extras
 import bmesh
+from bpy_extras import bmesh_utils
 import math
 import mathutils
 import bl_math
@@ -335,6 +336,9 @@ class SloppyProperties(bpy.types.PropertyGroup):
                                         if ifevl.face not in boundary_faces:
                                             boundary_faces.append(ifevl.face)
 
+        print('Boundary loops:', len(boundary_loops))
+        print('Island loops:', len(island_loops))
+
         vert_chains = []
         vert_loop_subchains = []
         vert_chains_eton = []
@@ -343,6 +347,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
         complete_face_chains = []
 
         while (len(verts_todo) - len(verts_done)) > 0:
+            # print('Verts done:', len(verts_done), 'Verts to do:', len(verts_todo), 'Vert chains:', len(vert_chains))
             this_vert_chain = []
             this_vert_chain_loop_subchains = []
             this_vert_chain_edge_to_next = []
@@ -369,6 +374,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
             first_vert = next_vert
             first_face = None
             last_face = None
+            last_vert = None
             while next_vert != None:
                 this_vert = next_vert
                 next_vert = None
@@ -377,16 +383,18 @@ class SloppyProperties(bpy.types.PropertyGroup):
                 next_face = None
                 this_vert_chain.append(this_vert)
                 loop_subchain = []
-
+                # print('Vert chain length:', len(this_vert_chain), 'This vert:', this_vert.index)
                 full_circle = False
                 
                 for tve in this_vert.link_edges:
-                    if not next_vert:
+                    if next_vert == None:
                         if tve in boundary_edges:
                             if tve.other_vert(this_vert) not in verts_done:
-                                next_vert = tve.other_vert(this_vert)
-                                other_vert = tve.other_vert(this_vert)
-                                edge_between = tve
+                                if tve.other_vert(this_vert) != last_vert:
+                                    next_vert = tve.other_vert(this_vert)
+                                    other_vert = tve.other_vert(this_vert)
+                                    edge_between = tve
+                                    # print('Next vert found:', next_vert.index)
                             else:
                                 if tve.other_vert(this_vert) == first_vert:
                                     full_circle = True
@@ -394,9 +402,9 @@ class SloppyProperties(bpy.types.PropertyGroup):
                                     edge_between = tve
                 this_vert_chain_edge_to_next.append(edge_between)
 
-                if not last_face:
+                if last_face == None:
                     for tvef in edge_between.link_faces:
-                        if not last_face:
+                        if last_face == None:
                             if tvef in boundary_faces:
                                 loops_are_done = True
                                 for tvev in edge_between.verts:
@@ -443,7 +451,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
                                                                 complete_loop_chain.append(lfefl)
                                                                 if lfefl not in loops_done:
                                                                     loops_done.append(lfefl)
-                                                        if next_vert in lfef.verts:
+                                                        if other_vert in lfef.verts:
                                                             next_face = lfef
                                                             found_next_face = True
                                                         current_face = lfef
@@ -451,33 +459,42 @@ class SloppyProperties(bpy.types.PropertyGroup):
                                                         if lfef not in faces_done:
                                                             faces_done.append(lfef)
                                                         complete_face_chain.append(lfef)
-                        last_face = next_face
+                            # print('Traversed', len(currently_done_faces), 'faces to get to next vert. Current face:', current_face.index)
+                    else:
+                        next_face = last_face
+                last_face = next_face
 
                 is_vert_done = True
-                for done_loop in this_vert.loops:
-                    if done_loop not in loops_done:
-                        is_vert_done = False
+                for done_loop in this_vert.link_loops:
+                    if done_loop in island_loops:
+                        if done_loop in boundary_loops:
+                            if done_loop not in loops_done:
+                                is_vert_done = False
                 if is_vert_done:
                     if this_vert not in verts_done:
                         verts_done.append(this_vert)
+                    print('Vert', this_vert.index, 'is done.')
                     if this_vert in verts_todo:
                         verts_todo.remove(this_vert)
+                else:
+                    print('Vert', this_vert.index, 'is not done yet.')
 
                 if full_circle:
                     old_sub = this_vert_chain_loop_subchains[0].copy()
                     new_sub = []
-                    for fvl in first_vert.link_loops:
-                        if fvl in next_face.loops:
-                            new_sub.append(fvl)
-                            complete_loop_chain.append(fvl)
-                            if fvl not in loops_done:
-                                loops_done.append(fvl)
+                    if next_face:
+                        for fvl in first_vert.link_loops:
+                            if fvl in next_face.loops:
+                                new_sub.append(fvl)
+                                complete_loop_chain.append(fvl)
+                                if fvl not in loops_done:
+                                    loops_done.append(fvl)
                     for subl in old_sub:
                         new_sub.append(subl)
                     this_vert_chain_loop_subchains[0] = new_sub.copy()
 
                     is_first_vert_done = True
-                    for fdl in first_vert.loops:
+                    for fdl in first_vert.link_loops:
                         if fdl not in loops_done:
                             is_first_vert_done = False
                     if is_first_vert_done:
@@ -485,6 +502,8 @@ class SloppyProperties(bpy.types.PropertyGroup):
                             verts_done.append(first_vert)
                         if first_vert in verts_todo:
                             verts_todo.remove(first_vert)
+                
+                last_vert = this_vert
 
                 complete_edge_chain.append(edge_between)
                 this_vert_chain_loop_subchains.append(loop_subchain)
@@ -3037,6 +3056,108 @@ class SloppyFindContiguousSeams(bpy.types.Operator):
 
 
 
+#region FindIsl.Bound. class
+class SloppyFindIslandBoundaries(bpy.types.Operator):
+    bl_idname = "operator.find_island_boundaries"
+    bl_label = "Find Island Boundaries"
+    bl_description = "Returns lists (vertex chains, face corner subchains, edge to next vertex in vertex chains, complete face corner chains, complete edge chains, complete vert chains, complete face chains) of contiguous boundaries of input island/collection of faces"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    iP = bpy.props.IntProperty
+    fP = bpy.props.FloatProperty
+    fvP = bpy.props.FloatVectorProperty
+    bP = bpy.props.BoolProperty
+    eP = bpy.props.EnumProperty
+    bvP = bpy.props.BoolVectorProperty
+    sP = bpy.props.StringProperty
+
+    max_i = 999999999
+
+    island_selection_mode: eP(
+        name = "Domain",
+        description = "Element domain to select",
+        items = [
+            ("A", "Selection As Island", ""),
+            ("B", "From Selected Face", ""),
+            ("C", "Index", "")
+            ],
+        default="C"
+        ) # type: ignore
+
+    island_index : iP(
+        name = "Island Index",
+        description = "",
+        default = 0
+        ) # type: ignore
+
+    add_debug_attributes : bP(
+        name = "Generate Debug Attribute",
+        description = "Generate color attributes to debug seam sides",
+        default = True
+        ) # type: ignore
+
+    verbose : bP(
+        name = "Verbose",
+        description = "Print debug information to system console",
+        default = False
+        ) # type: ignore
+
+    def execute(self, context):
+        props = context.scene.sloppy_props
+        in_bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
+        uv_layer = in_bm.loops.layers.uv.verify()
+        islands = bmesh_utils.bmesh_linked_uv_islands(in_bm, uv_layer)
+
+        island_index_clamped = int(bl_math.clamp(float(self.island_index), 0, len(islands) - 1))
+
+        island = islands[island_index_clamped]
+        if self.island_selection_mode == "A":
+            island = []
+            for face in in_bm.faces:
+                if face.select == True:
+                    island.append(face)
+        if self.island_selection_mode == "B":
+            for ii, island in enumerate(islands):
+                for face in island:
+                    if face.select == True:
+                        island = islands[ii]
+                        break
+        # vert_chains, vert_loop_subchains, vert_chains_eton, complete_loop_chains, complete_edge_chains, complete_face_chains
+        vcs, vlscs, vcs_eton, clcs, cecs, cfcs = props.find_island_boundaries_and_their_loops(in_bm, island)
+        
+        if self.add_debug_attributes:
+            props.find_or_add_attribute("normalized_loop_subchains", "FLOAT_COLOR", "CORNER")
+            props.find_or_add_attribute("Normalized_loop_sequence", "FLOAT_COLOR", "CORNER")
+            normalized_loop_subchains = props.get_attribute_layer("normalized_loop_subchains", "FLOAT_COLOR", "CORNER", in_bm)
+            Normalized_loop_sequence = props.get_attribute_layer("Normalized_loop_sequence", "FLOAT_COLOR", "CORNER", in_bm)
+
+            color_init = mathutils.Color((1,0.33,0.33))
+
+            for vlsc,clc,ci in zip(vlscs, clcs, range(len(clcs))):
+                this_base_color = color_init.copy()
+                this_base_color.h = ci/len(clcs)
+                for cli, cl in enumerate(clc):
+                    this_cl_color = this_base_color.copy()
+                    this_cl_color.v = cli/len(clc)
+                    cl[Normalized_loop_sequence].x = this_cl_color.r
+                    cl[Normalized_loop_sequence].y = this_cl_color.g
+                    cl[Normalized_loop_sequence].z = this_cl_color.b
+                for vli, vls in enumerate(vlsc):
+                    this_vl_color = this_base_color.copy()
+                    this_vl_color.v = vli/len(vlsc)
+                    for vl in vls:
+                        vl[normalized_loop_subchains].x = this_vl_color.r
+                        vl[normalized_loop_subchains].y = this_vl_color.g
+                        vl[normalized_loop_subchains].z = this_vl_color.b
+
+        bpy.context.active_object.data.update()
+
+        return {"FINISHED"}
+#endregion
+
+
+
+
 #region AlignViewToSel class
 class SloppyAlignViewToSelected(bpy.types.Operator):
     bl_idname = "operator.align_view_to_selection"
@@ -3141,6 +3262,7 @@ classes = [SloppyProperties,
            RedoUVEdgeLength,
            SloppyAlignViewToSelected,
            SloppyFindContiguousSeams,
+           SloppyFindIslandBoundaries,
            SloppyBasicUVUnfold
            ]
 

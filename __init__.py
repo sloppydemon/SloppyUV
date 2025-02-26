@@ -136,7 +136,10 @@ class SloppyProperties(bpy.types.PropertyGroup):
     def sort_key_second_item_in_list_of_lists_item(self, list_of_lists_item):
         return list_of_lists_item[1]
     
-    def find_contiguous_seams(self, bm, select_seams_by_index = False, select_index_start = 0, select_index_end = 0, verbose = False):
+    def sort_list_of_lists_by_list_length(self, list_in_a_list_of_lists):
+        return len(list_in_a_list_of_lists)
+    
+    def find_contiguous_seams(self, bm, select_seams_by_index = False, select_index_start = 0, select_index_end = 0, sort_by_length = True, verbose = False):
         """ Returns lists (seams, face corners to the right, face corners to the left) of contiguous seams (which way is contiguous at crossroad seams will be decided according to which next seam is most well-aligned with the last) and two lists of face corners belonging on either side of the seam """
         seams = []
         loops_l = []
@@ -275,150 +278,226 @@ class SloppyProperties(bpy.types.PropertyGroup):
                 for sme in sm:
                     smis.append(sme.index)
                 print('Seam',(smi),'- length',len(smis),'=',smis)
+        
+        if sort_by_length:
+            seams.sort(key=self.sort_list_of_lists_by_list_length, reverse=True)
 
         return seams, loops_r, loops_l
     
-    # def find_island_boundaries_and_their_loops(self, bm, island, verbose = False):
-    #     """ Returns lists (boundary edges, vertices in direction of travel, face corners of aforementioned vertices) of contiguous boundaries of input island/collection of faces """
-    #     boundaries = []
-    #     loops_l = []
-    #     loops_r = []
-    #     seam_edges_total = []
-    #     seam_edges_todo = []
-    #     seam_edges_done = []
+    def find_island_boundaries_and_their_loops(self, bm, island, verbose = False):
+        """ Returns lists (vertex chains, face corner subchains, edge to next vertex in vertex chains, complete face corner chains, complete edge chains, complete vert chains, complete face chains) of contiguous boundaries of input island/collection of faces """
+        island_loops = []
+        boundary_faces = []
+        boundary_edges = []
+        boundary_verts = []
+        boundary_loops = []
+        faces_done = []
+        verts_todo = []
+        verts_done = []
+        loops_done = []
 
-    #     for edge in bm.edges:
-    #         if edge.seam == True:
-    #             seam_edges_total.append(edge)
-    #             seam_edges_todo.append(edge)
-        
-    #     while (len(seam_edges_total) - len(seam_edges_done)) > 0:
-    #         this_seam = []
-    #         these_loops_l = []
-    #         these_loops_r = []
-    #         init_edge = seam_edges_todo[0]
-    #         init_edge_normal = self.calc_edge_avg_normal(init_edge, True)
-    #         r_rot_mat = mathutils.Matrix.Rotation(math.radians(90), 4, init_edge_normal)
-    #         init_edge_dir = self.get_dir(init_edge.verts[0].co, init_edge.verts[1].co)
-    #         this_r = init_edge_dir.copy()
-    #         this_r.rotate(r_rot_mat)
 
-    #         for iev in init_edge.verts:
-    #             for ievl in iev.link_loops:
-    #                 ievl_tan = ievl.calc_tangent()
-    #                 # ievl_tan += self.get_dir(self.calc_edge_center(init_edge), ievl.face.calc_center_bounds())
-    #                 ievl_tan_nor = ievl_tan.normalized()
-    #                 ie_tan_dot = ievl_tan.dot(this_r)
-    #                 if ie_tan_dot > 0.0:
-    #                     if ievl not in these_loops_r and ievl not in these_loops_l:
-    #                         these_loops_r.append(ievl)
-    #                 if ie_tan_dot <= 0.0:
-    #                     if ievl not in these_loops_l and ievl not in these_loops_r:
-    #                         these_loops_l.append(ievl)
+        for iface in island:
+            for ifl in iface.loops:
+                if ifl not in island_loops:
+                    island_loops.append(ifl)
 
-    #         init_sub_bundle_a = [init_edge.verts[0], 0, -1, init_edge, -init_edge_dir]
-    #         init_sub_bundle_b = [init_edge.verts[1], 0, 1, init_edge, init_edge_dir]
-    #         next_bundle = [init_sub_bundle_a, init_sub_bundle_b]
+        for iface in island:
+            for ife in iface.edges:
+                if ife not in boundary_edges:
+                    is_boundary = False
+                    if len(ife.link_faces) < 2:
+                        is_boundary = True
+                    else:
+                        faces_in_island = 0
+                        for ifef in ife.link_faces:
+                            if ifef in island:
+                                faces_in_island += 1
+                        if faces_in_island <= 1:
+                            is_boundary = True
+                        else:
+                            if ife.seam == True:
+                                is_boundary = True
+                    if is_boundary:
+                        if iface not in boundary_faces:
+                            boundary_faces.append(iface)
+                        if ife not in boundary_edges:
+                            boundary_edges.append(ife)
+                            for ifev in ife.verts:
+                                if ifev not in boundary_verts:
+                                    boundary_verts.append(ifev)
+                                    verts_todo.append(ifev)
+                                for ifevl in ifev.link_loops:
+                                    if ifevl in island_loops:
+                                        if ifevl not in boundary_loops:
+                                            boundary_loops.append(ifevl)
+                                    if ifevl.face in island:
+                                        if ifevl.face not in boundary_faces:
+                                            boundary_faces.append(ifevl.face)
 
-    #         this_seam.append([init_edge, 0])
+        vert_chains = []
+        vert_loop_subchains = []
+        vert_chains_eton = []
+        complete_loop_chains = []
+        complete_edge_chains = []
+        complete_face_chains = []
 
-    #         if init_edge not in seam_edges_done:
-    #             seam_edges_done.append(init_edge)
-    #         if init_edge in seam_edges_todo:
-    #             seam_edges_todo.remove(init_edge)
-
-    #         while len(next_bundle) > 0:
-    #             this_bundle = next_bundle.copy()
-    #             next_bundle.clear()
-    #             for sb in this_bundle:
-    #                 next_edge = None
-    #                 seam_cand = []
-
-    #                 for sbe in sb[0].link_edges:
-    #                     if sbe != sb[3]:
-    #                         if sbe.seam == True:
-    #                             if sbe not in seam_edges_done:
-    #                                 sbe_dir = self.get_dir(sb[0].co, sbe.other_vert(sb[0]).co)
-    #                                 sbe_dot = sbe_dir.dot(sb[4])
-    #                                 seam_cand.append([sbe, sbe_dot])
-    #                 if len(seam_cand) > 0:
-    #                     if len(seam_cand) > 1:
-    #                         seam_cand.sort(key=self.sort_key_second_item_in_list_of_lists_item, reverse=True)
-    #                     next_edge = seam_cand[0][0]
-                    
-    #                 if next_edge:
-    #                     sb_ov = next_edge.other_vert(sb[0])
-    #                     sb_dir = self.get_dir(sb[0].co, sb_ov.co)
-    #                     if sb[2] == -1:
-    #                         sb_dir *= -1
-    #                     sb_normal = self.calc_edge_avg_normal(next_edge, True)
-    #                     sb_r_rot_mat = mathutils.Matrix.Rotation(math.radians(90), 4, sb_normal)
-    #                     sb_r = sb_dir.copy()
-    #                     sb_r.rotate(sb_r_rot_mat)
-
-    #                     for nev in next_edge.verts:
-    #                         for nevl in nev.link_loops:
-    #                             nevl_tan = nevl.calc_tangent()
-    #                             # nevl_tan += self.get_dir(self.calc_edge_center(next_edge), nevl.face.calc_center_bounds())
-    #                             nevl_tan_nor = nevl_tan.normalized()
-    #                             ne_tan_dot = nevl_tan.dot(sb_r)
-    #                             if ne_tan_dot > 0.0:
-    #                                 if nevl not in these_loops_r and nevl not in these_loops_l:
-    #                                     these_loops_r.append(nevl)
-    #                             if ne_tan_dot <= 0.0:
-    #                                 if nevl not in these_loops_l and nevl not in these_loops_r:
-    #                                     these_loops_l.append(nevl)
-
-    #                     sb_sort_val = sb[1] + sb[2]
-
-    #                     ne_bundle = [sb_ov, sb_sort_val, sb[2], next_edge, sb_dir]
-    #                     next_bundle.append(ne_bundle)
-
-    #                     this_seam.append([next_edge, sb_sort_val])
-
-    #                     if next_edge not in seam_edges_done:
-    #                         seam_edges_done.append(next_edge)
-    #                     if next_edge in seam_edges_todo:
-    #                         seam_edges_todo.remove(next_edge)
+        while (len(verts_todo) - len(verts_done)) > 0:
+            this_vert_chain = []
+            this_vert_chain_loop_subchains = []
+            this_vert_chain_edge_to_next = []
             
-    #         this_seam.sort(key=self.sort_key_second_item_in_list_of_lists_item)
+            complete_loop_chain = []
+            complete_edge_chain = []
+            complete_face_chain = []
 
-    #         this_seam_clean = [i[0] for i in this_seam]
+            next_vert = verts_todo[0]
+            better_vert_found = False
+            for vtd in verts_todo:
+                if not better_vert_found:
+                    if len(vtd.link_faces) <= 2:
+                        next_vert = vtd
+                        better_vert_found = True
+                    else:
+                        faces_in_island = 0
+                        for vtdf in vtd.link_faces:
+                            if vtdf in island:
+                                faces_in_island += 1
+                        if faces_in_island <= 1:
+                            next_vert = vtd
+                            better_vert_found = True
+            first_vert = next_vert
+            first_face = None
+            last_face = None
+            while next_vert != None:
+                this_vert = next_vert
+                next_vert = None
+                other_vert = None
+                edge_between = None
+                next_face = None
+                this_vert_chain.append(this_vert)
+                loop_subchain = []
 
-    #         seams.append(this_seam_clean)
-    #         loops_l.append(these_loops_l)
-    #         loops_r.append(these_loops_r)
+                full_circle = False
+                
+                for tve in this_vert.link_edges:
+                    if not next_vert:
+                        if tve in boundary_edges:
+                            if tve.other_vert(this_vert) not in verts_done:
+                                next_vert = tve.other_vert(this_vert)
+                                other_vert = tve.other_vert(this_vert)
+                                edge_between = tve
+                            else:
+                                if tve.other_vert(this_vert) == first_vert:
+                                    full_circle = True
+                                    other_vert = tve.other_vert(this_vert)
+                                    edge_between = tve
+                this_vert_chain_edge_to_next.append(edge_between)
 
-    #         num_remain = len(seam_edges_total) - len(seam_edges_done)
-    #         if verbose:
-    #             print('Number of seams total:', len(seam_edges_total), '\nNumber of seams done:', len(seam_edges_done), '\nNumber of seams remaining:', num_remain)
-        
-    #     if select_seams_by_index:
-    #         i_s = int(bl_math.clamp(float(select_index_start), 0, float(len(seams)-1)))
-    #         i_e = int(bl_math.clamp(float(select_index_end), 0, float(len(seams)-1)))
+                if not last_face:
+                    for tvef in edge_between.link_faces:
+                        if not last_face:
+                            if tvef in boundary_faces:
+                                loops_are_done = True
+                                for tvev in edge_between.verts:
+                                    for tvevl in tvev.link_loops:
+                                        if tvevl in tvef.loops:
+                                            if tvevl not in loops_done:
+                                                loops_are_done = False
+                                if loops_are_done == False:
+                                    last_face = tvef
+                                    if not first_face:
+                                        first_face = tvef
+                    if last_face:
+                        if last_face not in faces_done:
+                            faces_done.append(last_face)
+                        complete_face_chain.append(last_face)
+                        for tvl in this_vert.link_loops:
+                            if tvl in last_face.loops:
+                                loop_subchain.append(tvl)
+                                complete_loop_chain.append(tvl)
+                                if tvl not in loops_done:
+                                    loops_done.append(tvl)
+                else:
+                    for tvl in this_vert.link_loops:
+                        if tvl in last_face.loops:
+                            loop_subchain.append(tvl)
+                            complete_loop_chain.append(tvl)
+                            if tvl not in loops_done:
+                                loops_done.append(tvl)
+                    if other_vert not in last_face.verts:
+                        found_next_face = False
+                        current_face = last_face
+                        currently_done_faces = [last_face]
+                        while found_next_face == False:
+                            for lfe in current_face.edges:
+                                if lfe in this_vert.link_edges:
+                                    if lfe not in boundary_edges:
+                                        for lfef in lfe.link_faces:
+                                            if ifef != current_face:
+                                                if lfef in island:
+                                                    if lfef not in currently_done_faces:
+                                                        for lfefl in lfef.loops:
+                                                            if lfefl in this_vert.link_loops:
+                                                                loop_subchain.append(lfefl)
+                                                                complete_loop_chain.append(lfefl)
+                                                                if lfefl not in loops_done:
+                                                                    loops_done.append(lfefl)
+                                                        if next_vert in lfef.verts:
+                                                            next_face = lfef
+                                                            found_next_face = True
+                                                        current_face = lfef
+                                                        currently_done_faces.append(ifef)
+                                                        if lfef not in faces_done:
+                                                            faces_done.append(lfef)
+                                                        complete_face_chain.append(lfef)
+                        last_face = next_face
 
-    #         if i_s == i_e:
-    #             for sme in seams[i_s]:
-    #                 sme.select_set(True)
-    #         elif i_e < i_s:
-    #             for i in range(i_e, i_s + 1):
-    #                 for sme in seams[i]:
-    #                     sme.select_set(True)
-    #         else:
-    #             for i in range(i_s, i_e + 1):
-    #                 for sme in seams[i]:
-    #                     sme.select_set(True)
-    #         bpy.context.active_object.data.update()
+                is_vert_done = True
+                for done_loop in this_vert.loops:
+                    if done_loop not in loops_done:
+                        is_vert_done = False
+                if is_vert_done:
+                    if this_vert not in verts_done:
+                        verts_done.append(this_vert)
+                    if this_vert in verts_todo:
+                        verts_todo.remove(this_vert)
 
-    #     if verbose:
-    #         print('Number of contiguous seams:', len(seams))
-    #         for smi, sm in enumerate(seams):
-    #             smis = []
-    #             for sme in sm:
-    #                 smis.append(sme.index)
-    #             print('Seam',(smi),'- length',len(smis),'=',smis)
+                if full_circle:
+                    old_sub = this_vert_chain_loop_subchains[0].copy()
+                    new_sub = []
+                    for fvl in first_vert.link_loops:
+                        if fvl in next_face.loops:
+                            new_sub.append(fvl)
+                            complete_loop_chain.append(fvl)
+                            if fvl not in loops_done:
+                                loops_done.append(fvl)
+                    for subl in old_sub:
+                        new_sub.append(subl)
+                    this_vert_chain_loop_subchains[0] = new_sub.copy()
 
-    #     return seams, loops_r, loops_l
+                    is_first_vert_done = True
+                    for fdl in first_vert.loops:
+                        if fdl not in loops_done:
+                            is_first_vert_done = False
+                    if is_first_vert_done:
+                        if first_vert not in verts_done:
+                            verts_done.append(first_vert)
+                        if first_vert in verts_todo:
+                            verts_todo.remove(first_vert)
+
+                complete_edge_chain.append(edge_between)
+                this_vert_chain_loop_subchains.append(loop_subchain)
+
+            vert_chains.append(this_vert_chain)
+            vert_chains_eton.append(this_vert_chain_edge_to_next)
+            vert_loop_subchains.append(this_vert_chain_loop_subchains)
+            
+            complete_loop_chains.append(complete_loop_chain)
+            complete_edge_chains.append(complete_edge_chain)
+            complete_face_chains.append(complete_face_chain)
+
+        return vert_chains, vert_loop_subchains, vert_chains_eton, complete_loop_chains, complete_edge_chains, complete_face_chains
     
     def align_view3d_against_normal(self, normal, view3d):
         rot_quat = -normal.to_track_quat('Z', 'Y')

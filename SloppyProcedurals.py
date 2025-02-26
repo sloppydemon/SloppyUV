@@ -3869,6 +3869,12 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
         default=True
         ) # type: ignore
     
+    recalc_full_circle : bP(
+        name = "Racalculate Angles",
+        description = "Recalculate angles to equal 360 degrees (or debug value found below) combined",
+        default=True
+        ) # type: ignore
+    
     smoothing : iP(
         name = "Smooothing Iterations",
         description = "For each smoothing iteration, another pass is allowed for each vertex, averaged with last pass",
@@ -4103,7 +4109,9 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
                                 loop_iter += 1
                                 if this_loop.edge != bundle[1]:
                                     print('\nBundle', bundle_iter, '- Sub-bundle', (bi + 1), 'of', len(this_bundle), '- Loop', (loop_iter), 'of', len(loops_to_do), ':')
-                                    this_rot_deg = (this_angle/angle_sum) * self.debug_fcd
+                                    this_rot_deg = this_angle
+                                    if self.recalc_full_circle:
+                                        this_rot_deg = (this_angle/angle_sum) * self.debug_fcd
                                     dir_a = self.get_dir(bundle[0].co, bundle[1].other_vert(bundle[0]).co)
                                     dir_b = self.get_dir(bundle[0].co, this_loop.edge.other_vert(bundle[0]).co)
                                     print('Last/Current geo direction:', dir_a, '/' ,dir_b)

@@ -141,10 +141,11 @@ class SloppyProperties(bpy.types.PropertyGroup):
         return len(list_in_a_list_of_lists)
     
     def find_contiguous_seams(self, bm, select_seams_by_index = False, select_index_start = 0, select_index_end = 0, sort_by_length = True, verbose = False):
-        """ Returns lists (seams, face corners to the right, face corners to the left) of contiguous seams (which way is contiguous at crossroad seams will be decided according to which next seam is most well-aligned with the last) and two lists of face corners belonging on either side of the seam """
+        """ Returns lists (seams, face corners to the right, face corners to the left, boolean returning True if seam is open-ended) of contiguous seams (which way is contiguous at crossroad seams will be decided according to which next seam is most well-aligned with the last) and two lists of face corners belonging on either side of the seam """
         seams = []
         loops_l = []
         loops_r = []
+        seams_open_ended = []
         seam_edges_total = []
         seam_edges_todo = []
         seam_edges_done = []
@@ -158,6 +159,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
             this_seam = []
             these_loops_l = []
             these_loops_r = []
+            open_end = False
             init_edge = seam_edges_todo[0]
             init_edge_normal = self.calc_edge_avg_normal(init_edge, True)
             r_rot_mat = mathutils.Matrix.Rotation(math.radians(90), 4, init_edge_normal)
@@ -195,10 +197,15 @@ class SloppyProperties(bpy.types.PropertyGroup):
                 for sb in this_bundle:
                     next_edge = None
                     seam_cand = []
+                    met_other_seam = False
+                    met_boundary_edge = False
 
                     for sbe in sb[0].link_edges:
                         if sbe != sb[3]:
+                            if len(sbe.link_faces) < 2:
+                                met_boundary_edge = True
                             if sbe.seam == True:
+                                met_other_seam = True
                                 if sbe not in seam_edges_done:
                                     sbe_dir = self.get_dir(sb[0].co, sbe.other_vert(sb[0]).co)
                                     sbe_dot = sbe_dir.dot(sb[4])
@@ -242,7 +249,9 @@ class SloppyProperties(bpy.types.PropertyGroup):
                             seam_edges_done.append(next_edge)
                         if next_edge in seam_edges_todo:
                             seam_edges_todo.remove(next_edge)
-            
+                    else:
+                        if met_other_seam == False and met_boundary_edge == False:
+                            open_end = True
             this_seam.sort(key=self.sort_key_second_item_in_list_of_lists_item)
 
             this_seam_clean = [i[0] for i in this_seam]
@@ -250,6 +259,7 @@ class SloppyProperties(bpy.types.PropertyGroup):
             seams.append(this_seam_clean)
             loops_l.append(these_loops_l)
             loops_r.append(these_loops_r)
+            seams_open_ended.append(open_end)
 
             num_remain = len(seam_edges_total) - len(seam_edges_done)
             if verbose:
@@ -278,12 +288,15 @@ class SloppyProperties(bpy.types.PropertyGroup):
                 smis = []
                 for sme in sm:
                     smis.append(sme.index)
-                print('Seam',(smi),'- length',len(smis),'=',smis)
+                open_ended = "(closed)"
+                if seams_open_ended[smi] == True:
+                    open_ended = "(open-ended)"
+                print('Seam',(smi), open_ended,'- length',len(smis),'=',smis)
         
         if sort_by_length:
             seams.sort(key=self.sort_list_of_lists_by_list_length, reverse=True)
 
-        return seams, loops_r, loops_l
+        return seams, loops_r, loops_l, seams_open_ended
     
     def find_island_boundaries_and_their_loops(self, bm, island, verbose = False):
         """ Returns lists (vertex chains, face corner subchains, edge to next vertex in vertex chains, complete face corner chains, complete edge chains, complete vert chains, complete face chains) of contiguous boundaries of input island/collection of faces """
@@ -2969,7 +2982,7 @@ class SloppyShiftSelectByIndex(bpy.types.Operator):
 class SloppyFindContiguousSeams(bpy.types.Operator):
     bl_idname = "operator.find_contiguous_seams"
     bl_label = "Find Contiguous Seams"
-    bl_description = "Returns lists (seams, face corners to the right, face corners to the left) of contiguous seams (which way is contiguous at crossroad seams will be decided according to which next seam is most well-aligned with the last) and two lists of face corners belonging on either side of the seam"
+    bl_description = "Returns lists (seams, face corners to the right, face corners to the left, boolean returning True if seam is open-ended) of contiguous seams (which way is contiguous at crossroad seams will be decided according to which next seam is most well-aligned with the last) and two lists of face corners belonging on either side of the seam"
     bl_options = {'REGISTER', 'UNDO'}
 
     iP = bpy.props.IntProperty
@@ -2984,7 +2997,7 @@ class SloppyFindContiguousSeams(bpy.types.Operator):
 
     sel_seams_by_i : bP(
         name = "Select Seams by Index",
-        description = "Force the element domain to select",
+        description = "",
         default = False
         ) # type: ignore
 
@@ -3015,7 +3028,18 @@ class SloppyFindContiguousSeams(bpy.types.Operator):
     def execute(self, context):
         props = context.scene.sloppy_props
         in_bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
-        sms, lsr, lsl = props.find_contiguous_seams(in_bm, self.sel_seams_by_i, self.sel_i_start, self.sel_i_end, self.verbose)
+        sms, lsr, lsl, smsoe = props.find_contiguous_seams(in_bm, self.sel_seams_by_i, self.sel_i_start, self.sel_i_end, self.verbose)
+
+        if self.verbose:
+            print('Number of contiguous seams:', len(sms))
+            for smi, sm in enumerate(sms):
+                smis = []
+                for sme in sm:
+                    smis.append(sme.index)
+                open_ended = "(closed)"
+                if smsoe[smi] == True:
+                    open_ended = "(open-ended)"
+                print('Seam',(smi), open_ended,'- length',len(smis),'=',smis)
         
         if self.add_debug_attributes:
             props.find_or_add_attribute("seam_side", "FLOAT_COLOR", "CORNER")
@@ -3038,7 +3062,7 @@ class SloppyFindContiguousSeams(bpy.types.Operator):
                     if len(sm) > 1:
                         nor_sm_seq = smi/(len(sm) - 1)
                     sme[normalized_seam_sequence] = nor_sm_seq
-            
+
             for lrs, lls in zip(lsr, lsl):
                 for lrl, lll in zip(lrs, lls):
                     lrl[seam_side].x = colr.r

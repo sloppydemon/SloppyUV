@@ -3,6 +3,7 @@ import bmesh
 import math
 import mathutils
 import bl_math
+from bpy_extras import bmesh_utils
 
 class SloppySeamGen(bpy.types.Operator):
     bl_idname = "operator.sloppy_seam_gen"
@@ -579,6 +580,89 @@ class SloppySeamGen(bpy.types.Operator):
                     face.select = False
 
         
+        return {"FINISHED"}
+
+class SloppyIslandBoundaryConnect(bpy.types.Operator):
+    bl_idname = "operator.sloppy_boundary_connect"
+    bl_label = "Connect Island Boundaries"
+    bl_description = "Try to connect island boundaries if there are more than one (an example would be a cylindrical shape with no seam to split it into a strip, instead having a ring-shaped UV-map)"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    iP = bpy.props.IntProperty
+    fP = bpy.props.FloatProperty
+    fvP = bpy.props.FloatVectorProperty
+    ivP = bpy.props.IntVectorProperty
+    bP = bpy.props.BoolProperty
+    eP = bpy.props.EnumProperty
+    bvP = bpy.props.BoolVectorProperty
+    sP = bpy.props.StringProperty
+
+    island_selection_mode: eP(
+        name = "Island Selection Mode",
+        description = "Mode of selecting which island to do",
+        items = [
+            ("A", "Selection As Island", ""),
+            ("B", "From Selected Face", ""),
+            ("C", "Index", "")
+            ],
+        default="B"
+        ) # type: ignore
+
+    island_index : iP(
+        name = "Island Index",
+        description = "",
+        default = 0
+        ) # type: ignore
+
+    z_factor : fP(
+        name = "Z Factor",
+        description = "How much influence Z axis has on connection calculation",
+        default = 1.0,
+        max=1.0,
+        min=-1.0
+        ) # type: ignore
+
+    concavity_factor : fP(
+        name = "Concavity Factor",
+        description = "How much influence concavity has on connection calculation",
+        default = 1.0,
+        max=1.0,
+        min=-1.0
+        ) # type: ignore
+
+    verbose : bP(
+        name = "Verbose",
+        description = "Print debug information to system console",
+        default = True
+        ) # type: ignore
+
+    def execute(self, context):
+        props = context.scene.sloppy_props
+        bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
+        uv_layer = bm.loops.layers.uv.verify()
+        islands = bmesh_utils.bmesh_linked_uv_islands(bm, uv_layer)
+        do_connect = False
+
+        island_index_clamped = int(bl_math.clamp(float(self.island_index), 0, len(islands) - 1))
+
+        island = islands[island_index_clamped]
+        if self.island_selection_mode == "A":
+            island = []
+            for face in bm.faces:
+                if face.select == True:
+                    island.append(face)
+        if self.island_selection_mode == "B":
+            for ii, isl in enumerate(islands):
+                for face in isl:
+                    if face.select == True:
+                        island = islands[ii]
+                        break
+        
+        loop_chains, loop_chains_eton, vert_chains, edge_chains, face_chains = props.find_island_boundaries_and_their_loops(bm, island, True, self.verbose)
+
+        if len(loop_chains) > 1:
+            do_connect = True
+
         return {"FINISHED"}
 
 class SloppySeamGenVis(bpy.types.Operator):

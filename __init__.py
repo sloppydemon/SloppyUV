@@ -340,18 +340,15 @@ class SloppyProperties(bpy.types.PropertyGroup):
 
         return seams, loops_r, loops_l, seams_open_ended, seams_isolated, seams_meet_boundary
     
-    def find_island_boundaries_and_their_loops(self, bm, island, verbose = False):
-        """ Returns lists (vertex chains, face corner subchains, edge to next vertex in vertex chains, complete face corner chains, complete edge chains, complete vert chains, complete face chains) of contiguous boundaries of input island/collection of faces """
+    def find_island_boundaries_and_their_loops(self, bm, island, sort_by_length = True, verbose = False):
+        """ Returns lists (loop chains, vertex chains, edge chains, face chains) of contiguous boundaries of input island/collection of faces """
         island_loops = []
         boundary_faces = []
         boundary_edges = []
         boundary_verts = []
         boundary_loops = []
-        faces_done = []
-        verts_todo = []
-        verts_done = []
+        loops_todo = []
         loops_done = []
-
 
         for iface in island:
             for ifl in iface.loops:
@@ -371,9 +368,8 @@ class SloppyProperties(bpy.types.PropertyGroup):
                                 faces_in_island += 1
                         if faces_in_island <= 1:
                             is_boundary = True
-                        else:
-                            if ife.seam == True:
-                                is_boundary = True
+                    if ife.seam == True:
+                        is_boundary = True
                     if is_boundary:
                         if iface not in boundary_faces:
                             boundary_faces.append(iface)
@@ -382,196 +378,125 @@ class SloppyProperties(bpy.types.PropertyGroup):
                             for ifev in ife.verts:
                                 if ifev not in boundary_verts:
                                     boundary_verts.append(ifev)
-                                    verts_todo.append(ifev)
                                 for ifevl in ifev.link_loops:
                                     if ifevl in island_loops:
                                         if ifevl not in boundary_loops:
                                             boundary_loops.append(ifevl)
+                                            loops_todo.append(ifevl)
                                     if ifevl.face in island:
                                         if ifevl.face not in boundary_faces:
                                             boundary_faces.append(ifevl.face)
+        if verbose == True:
+            print('Boundary loops:', len(boundary_loops))
+            print('Boundary vertices:', len(boundary_verts))
+            print('Boundary edges:', len(boundary_edges))
+            print('Boundary faces:', len(boundary_faces))
+            print('Island loops:', len(island_loops))
 
-        print('Boundary loops:', len(boundary_loops))
-        print('Island loops:', len(island_loops))
-
+        loop_chains = []
+        loop_chains_eton = []
         vert_chains = []
-        vert_loop_subchains = []
-        vert_chains_eton = []
-        complete_loop_chains = []
-        complete_edge_chains = []
-        complete_face_chains = []
+        edge_chains = []
+        face_chains = []
 
-        while (len(verts_todo) - len(verts_done)) > 0:
+        while len(loops_todo) > 0:
             # print('Verts done:', len(verts_done), 'Verts to do:', len(verts_todo), 'Vert chains:', len(vert_chains))
-            this_vert_chain = []
-            this_vert_chain_loop_subchains = []
-            this_vert_chain_edge_to_next = []
-            
-            complete_loop_chain = []
-            complete_edge_chain = []
-            complete_face_chain = []
+            loop_chain = []
+            loop_chain_eton = []
+            vert_chain = []
+            edge_chain = []
+            face_chain = []
 
-            next_vert = verts_todo[0]
-            better_vert_found = False
-            for vtd in verts_todo:
-                if not better_vert_found:
-                    if len(vtd.link_faces) <= 2:
-                        next_vert = vtd
-                        better_vert_found = True
+            next_loop = loops_todo[0]
+            better_loop_found = False
+            for ltd in loops_todo:
+                if better_loop_found == False:
+                    if len(ltd.vert.link_faces) <= 2:
+                        next_loop = ltd
+                        better_loop_found = True
                     else:
                         faces_in_island = 0
-                        for vtdf in vtd.link_faces:
-                            if vtdf in island:
+                        for ltdf in ltd.vert.link_faces:
+                            if ltdf in island:
                                 faces_in_island += 1
                         if faces_in_island <= 1:
-                            next_vert = vtd
-                            better_vert_found = True
-            first_vert = next_vert
-            first_face = None
-            last_face = None
-            last_vert = None
-            while next_vert != None:
-                this_vert = next_vert
-                next_vert = None
-                other_vert = None
+                            next_loop = ltd
+                            better_loop_found = True
+            first_loop = next_loop
+            vert_chain.append(next_loop.vert)
+            face_chain.append(next_loop.face)
+            while next_loop != None:
+                this_loop = next_loop
+                next_loop = None
                 edge_between = None
-                next_face = None
-                this_vert_chain.append(this_vert)
-                loop_subchain = []
-                # print('Vert chain length:', len(this_vert_chain), 'This vert:', this_vert.index)
+                loop_chain.append(this_loop)
+                if this_loop not in loops_done:
+                    loops_done.append(this_loop)
+                if this_loop in loops_todo:
+                    loops_todo.remove(this_loop)
                 full_circle = False
-                
-                for tve in this_vert.link_edges:
-                    if next_vert == None:
-                        if tve in boundary_edges:
-                            if tve.other_vert(this_vert) not in verts_done:
-                                if tve.other_vert(this_vert) != last_vert:
-                                    next_vert = tve.other_vert(this_vert)
-                                    other_vert = tve.other_vert(this_vert)
-                                    edge_between = tve
-                                    # print('Next vert found:', next_vert.index)
+
+                if not next_loop:
+                    for tle in this_loop.vert.link_edges:
+                        if next_loop == None:
+                            if tle in boundary_edges:
+                                for tleovl in tle.other_vert(this_loop.vert).link_loops:
+                                    if tleovl not in loops_done:
+                                        if tleovl.face == this_loop.face:
+                                            next_loop = tleovl
+                                            edge_between = tle
+
+                                    else:
+                                        if tleovl == first_loop:
+                                            full_circle = True
+                                            edge_between = tle
+                    if next_loop:
+                        edge_chain.append(edge_between)
+
+                if not next_loop:
+                    for tlvl in this_loop.vert.link_loops:
+                        if not next_loop:
+                            if tlvl not in loops_done:
+                                share_face = False
+                                for tlvlfe in tlvl.face.edges:
+                                    if tlvlfe not in boundary_edges:
+                                        for tlvlfef in tlvlfe.link_faces:
+                                            if tlvlfef == this_loop.face:
+                                                share_face = True
+                                if share_face == True:
+                                    next_loop = tlvl
                             else:
-                                if tve.other_vert(this_vert) == first_vert:
+                                if tlvl == this_loop:
                                     full_circle = True
-                                    other_vert = tve.other_vert(this_vert)
-                                    edge_between = tve
-                this_vert_chain_edge_to_next.append(edge_between)
+                    if next_loop:
+                        face_chain.append(this_loop.face)
+                    
+                    loop_chain_eton.append(edge_between)
+            loop_chains.append(loop_chain)
+            loop_chains_eton.append(loop_chain_eton)
+            vert_chains.append(vert_chain)
+            edge_chains.append(edge_chain)
+            face_chains.append(face_chain)
 
-                if last_face == None:
-                    for tvef in edge_between.link_faces:
-                        if last_face == None:
-                            if tvef in boundary_faces:
-                                loops_are_done = True
-                                for tvev in edge_between.verts:
-                                    for tvevl in tvev.link_loops:
-                                        if tvevl in tvef.loops:
-                                            if tvevl not in loops_done:
-                                                loops_are_done = False
-                                if loops_are_done == False:
-                                    last_face = tvef
-                                    if not first_face:
-                                        first_face = tvef
-                    if last_face:
-                        if last_face not in faces_done:
-                            faces_done.append(last_face)
-                        complete_face_chain.append(last_face)
-                        for tvl in this_vert.link_loops:
-                            if tvl in last_face.loops:
-                                loop_subchain.append(tvl)
-                                complete_loop_chain.append(tvl)
-                                if tvl not in loops_done:
-                                    loops_done.append(tvl)
-                else:
-                    for tvl in this_vert.link_loops:
-                        if tvl in last_face.loops:
-                            loop_subchain.append(tvl)
-                            complete_loop_chain.append(tvl)
-                            if tvl not in loops_done:
-                                loops_done.append(tvl)
-                    if other_vert not in last_face.verts:
-                        found_next_face = False
-                        current_face = last_face
-                        currently_done_faces = [last_face]
-                        while found_next_face == False:
-                            for lfe in current_face.edges:
-                                if lfe in this_vert.link_edges:
-                                    if lfe not in boundary_edges:
-                                        for lfef in lfe.link_faces:
-                                            if ifef != current_face:
-                                                if lfef in island:
-                                                    if lfef not in currently_done_faces:
-                                                        for lfefl in lfef.loops:
-                                                            if lfefl in this_vert.link_loops:
-                                                                loop_subchain.append(lfefl)
-                                                                complete_loop_chain.append(lfefl)
-                                                                if lfefl not in loops_done:
-                                                                    loops_done.append(lfefl)
-                                                        if other_vert in lfef.verts:
-                                                            next_face = lfef
-                                                            found_next_face = True
-                                                        current_face = lfef
-                                                        currently_done_faces.append(ifef)
-                                                        if lfef not in faces_done:
-                                                            faces_done.append(lfef)
-                                                        complete_face_chain.append(lfef)
-                            # print('Traversed', len(currently_done_faces), 'faces to get to next vert. Current face:', current_face.index)
-                    else:
-                        next_face = last_face
-                last_face = next_face
+            if sort_by_length == True:
+                sorting_array = []
+                for lci, lc in enumerate(loop_chains):
+                    sorting_sub = [lc, loop_chains_eton[lci], vert_chains[lci], edge_chains[lci], face_chains[lci]]
+                    sorting_array.append(sorting_sub)
 
-                is_vert_done = True
-                for done_loop in this_vert.link_loops:
-                    if done_loop in island_loops:
-                        if done_loop in boundary_loops:
-                            if done_loop not in loops_done:
-                                is_vert_done = False
-                if is_vert_done:
-                    if this_vert not in verts_done:
-                        verts_done.append(this_vert)
-                    print('Vert', this_vert.index, 'is done.')
-                    if this_vert in verts_todo:
-                        verts_todo.remove(this_vert)
-                else:
-                    print('Vert', this_vert.index, 'is not done yet.')
+                if sort_by_length == True:
+                    sorting_array.sort(key=self.sort_list_of_lists_by_first_item_length, reverse=True)
+                    for sai, sa in enumerate(sorting_array):
+                        loop_chains[sai] = sa[0]
+                        loop_chains_eton[sai] = sa[1]
+                        vert_chains[sai] = sa[2]
+                        edge_chains[sai] = sa[3]
+                        face_chains[sai] = sa[4]
+        
+        if verbose == True:
+            print('Number of loop chains:', len(loop_chains))
 
-                if full_circle:
-                    old_sub = this_vert_chain_loop_subchains[0].copy()
-                    new_sub = []
-                    if next_face:
-                        for fvl in first_vert.link_loops:
-                            if fvl in next_face.loops:
-                                new_sub.append(fvl)
-                                complete_loop_chain.append(fvl)
-                                if fvl not in loops_done:
-                                    loops_done.append(fvl)
-                    for subl in old_sub:
-                        new_sub.append(subl)
-                    this_vert_chain_loop_subchains[0] = new_sub.copy()
-
-                    is_first_vert_done = True
-                    for fdl in first_vert.link_loops:
-                        if fdl not in loops_done:
-                            is_first_vert_done = False
-                    if is_first_vert_done:
-                        if first_vert not in verts_done:
-                            verts_done.append(first_vert)
-                        if first_vert in verts_todo:
-                            verts_todo.remove(first_vert)
-                
-                last_vert = this_vert
-
-                complete_edge_chain.append(edge_between)
-                this_vert_chain_loop_subchains.append(loop_subchain)
-
-            vert_chains.append(this_vert_chain)
-            vert_chains_eton.append(this_vert_chain_edge_to_next)
-            vert_loop_subchains.append(this_vert_chain_loop_subchains)
-            
-            complete_loop_chains.append(complete_loop_chain)
-            complete_edge_chains.append(complete_edge_chain)
-            complete_face_chains.append(complete_face_chain)
-
-        return vert_chains, vert_loop_subchains, vert_chains_eton, complete_loop_chains, complete_edge_chains, complete_face_chains
+        return loop_chains, loop_chains_eton, vert_chains, edge_chains, face_chains
     
     def align_view3d_against_normal(self, normal, view3d):
         rot_quat = -normal.to_track_quat('Z', 'Y')
@@ -3148,14 +3073,14 @@ class SloppyFindIslandBoundaries(bpy.types.Operator):
     max_i = 999999999
 
     island_selection_mode: eP(
-        name = "Domain",
-        description = "Element domain to select",
+        name = "Island Selection Mode",
+        description = "Mode of selecting which island to do",
         items = [
             ("A", "Selection As Island", ""),
             ("B", "From Selected Face", ""),
             ("C", "Index", "")
             ],
-        default="C"
+        default="B"
         ) # type: ignore
 
     island_index : iP(
@@ -3173,7 +3098,7 @@ class SloppyFindIslandBoundaries(bpy.types.Operator):
     verbose : bP(
         name = "Verbose",
         description = "Print debug information to system console",
-        default = False
+        default = True
         ) # type: ignore
 
     def execute(self, context):
@@ -3191,38 +3116,34 @@ class SloppyFindIslandBoundaries(bpy.types.Operator):
                 if face.select == True:
                     island.append(face)
         if self.island_selection_mode == "B":
-            for ii, island in enumerate(islands):
-                for face in island:
+            for ii, isl in enumerate(islands):
+                for face in isl:
                     if face.select == True:
                         island = islands[ii]
                         break
         # vert_chains, vert_loop_subchains, vert_chains_eton, complete_loop_chains, complete_edge_chains, complete_face_chains
-        vcs, vlscs, vcs_eton, clcs, cecs, cfcs = props.find_island_boundaries_and_their_loops(in_bm, island)
+        lcs, lcetons, ecs, fcs = props.find_island_boundaries_and_their_loops(in_bm, island, True, self.verbose)
         
         if self.add_debug_attributes:
-            props.find_or_add_attribute("normalized_loop_subchains", "FLOAT_COLOR", "CORNER")
-            props.find_or_add_attribute("Normalized_loop_sequence", "FLOAT_COLOR", "CORNER")
-            normalized_loop_subchains = props.get_attribute_layer("normalized_loop_subchains", "FLOAT_COLOR", "CORNER", in_bm)
-            Normalized_loop_sequence = props.get_attribute_layer("Normalized_loop_sequence", "FLOAT_COLOR", "CORNER", in_bm)
+            props.find_or_add_attribute("normalized_loop_sequence", "FLOAT_COLOR", "CORNER")
+            normalized_loop_sequence = props.get_attribute_layer("normalized_loop_sequence", "FLOAT_COLOR", "CORNER", in_bm)
 
             color_init = mathutils.Color((1,0.33,0.33))
+            for iface in island:
+                for ifl in iface.loops:
+                    ifl[normalized_loop_sequence].x = 0.0
+                    ifl[normalized_loop_sequence].y = 0.0
+                    ifl[normalized_loop_sequence].z = 0.0
 
-            for vlsc,clc,ci in zip(vlscs, clcs, range(len(clcs))):
+            for lci,lc in enumerate(lcs):
                 this_base_color = color_init.copy()
-                this_base_color.h = ci/len(clcs)
-                for cli, cl in enumerate(clc):
+                this_base_color.h = lci/len(lcs)
+                for cli, cl in enumerate(lc):
                     this_cl_color = this_base_color.copy()
-                    this_cl_color.v = cli/len(clc)
-                    cl[Normalized_loop_sequence].x = this_cl_color.r
-                    cl[Normalized_loop_sequence].y = this_cl_color.g
-                    cl[Normalized_loop_sequence].z = this_cl_color.b
-                for vli, vls in enumerate(vlsc):
-                    this_vl_color = this_base_color.copy()
-                    this_vl_color.v = vli/len(vlsc)
-                    for vl in vls:
-                        vl[normalized_loop_subchains].x = this_vl_color.r
-                        vl[normalized_loop_subchains].y = this_vl_color.g
-                        vl[normalized_loop_subchains].z = this_vl_color.b
+                    # this_cl_color.v = (cli/len(lc) * 0.5) + 0.5
+                    cl[normalized_loop_sequence].x = this_cl_color.r
+                    cl[normalized_loop_sequence].y = this_cl_color.g
+                    cl[normalized_loop_sequence].z = this_cl_color.b
 
         bpy.context.active_object.data.update()
 

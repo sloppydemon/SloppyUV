@@ -630,6 +630,14 @@ class SloppyIslandBoundaryConnect(bpy.types.Operator):
         min=-1.0
         ) # type: ignore
 
+    proximity_factor : fP(
+        name = "Proximity Factor",
+        description = "How much influence proximity to other boundary has on connection calculation",
+        default = 1.0,
+        max=1.0,
+        min=-1.0
+        ) # type: ignore
+
     verbose : bP(
         name = "Verbose",
         description = "Print debug information to system console",
@@ -662,6 +670,9 @@ class SloppyIslandBoundaryConnect(bpy.types.Operator):
 
         if len(loop_chains) > 1:
             do_connect = True
+        else:
+            if self.verbose:
+                print('Connecting of boundaries unnecessary since there is only one boundary.')
 
         return {"FINISHED"}
 

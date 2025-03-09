@@ -2,6 +2,7 @@ import bpy
 import bmesh
 import math
 import mathutils
+import bl_math
 
 class SloppySeamGen(bpy.types.Operator):
     bl_idname = "operator.sloppy_seam_gen"
@@ -22,7 +23,7 @@ class SloppySeamGen(bpy.types.Operator):
         name = "Concavity Influence",
         description = "Influence of concavity on seam generation",
         default = 1,
-        min = 0,
+        min = -1,
         max = 1
         ) # type: ignore
 
@@ -30,7 +31,7 @@ class SloppySeamGen(bpy.types.Operator):
         name = "Average Concavity Influence",
         description = "Influence of averaged area concavity on seam generation",
         default = 0,
-        min = 0,
+        min = -1,
         max = 1
         ) # type: ignore
 
@@ -38,7 +39,7 @@ class SloppySeamGen(bpy.types.Operator):
         name = "AO Influence",
         description = "Influence of ambient occlusion on seam generation",
         default = 0,
-        min = 0,
+        min = -1,
         max = 1
         ) # type: ignore
 
@@ -46,8 +47,48 @@ class SloppySeamGen(bpy.types.Operator):
         name = "Edge Density Influence",
         description = "Influence of edge density on seam generation",
         default = 0,
-        min = 0,
+        min = -1,
         max = 1
+        ) # type: ignore
+
+    depth_factor : fP(
+        name = "Depth Influence",
+        description = "Influence of edge depth (compared to average Z of surrounding faces) on seam generation",
+        default = 0,
+        min = -1,
+        max = 1
+        ) # type: ignore
+    
+    depth_mode : eP(
+        name = "Depth Calculation Mode",
+        description = "Mode of calculating average depth",
+        items = [
+            ("A", "Radius", "Calculate average depth from vertices within radius"),
+            ("B", "Connected", "Calculate average depth from vertices within number of connected edges")
+            ],
+        default="B"
+        ) # type: ignore
+    
+    depth_avg_rad : fP(
+        name = "Depth Average Radius",
+        description = "Calculate depth average within this radius",
+        default = 0.1,
+        min = 0.001,
+        max = 10000.0
+        ) # type: ignore
+
+    depth_avg_iters : iP(
+        name = "Depth Average Iterations",
+        description = "Number of edges out from current edge to calculate depth average",
+        default = 2,
+        min = 1,
+        max = 1000
+        ) # type: ignore
+    
+    depth_weight_by_dist : bP(
+        name = "Weight by Distance",
+        description = "Weigh depth average by distance from target",
+        default = False
         ) # type: ignore
 
     no_rounds : iP(
@@ -82,6 +123,12 @@ class SloppySeamGen(bpy.types.Operator):
         max = 180
         ) # type: ignore
 
+    add_normalized_attr : bP(
+        name = "Add Normalized Attributes",
+        description = "Generate additional normalized attributes - can be usual for debugging",
+        default = True
+        ) # type: ignore
+
     clear_seam : bP(
         name = "Clear Seams",
         description = "Clear any existing seams",
@@ -95,6 +142,75 @@ class SloppySeamGen(bpy.types.Operator):
         ) # type: ignore
     # endregion
 
+    def find_depth(self, in_bm, edg, coo, nor, radius, num_out, mode, weight_by_dist):
+        evs = []
+        for ev in edg.verts:
+            evs.append(ev)
+        avg_depth = coo.copy()
+        avg_norm = nor.copy()
+        num_contributors = 1.0
+        if mode == "A":
+            max_dist = 0.0
+            min_dist = 9999999.0
+            dist_dat = []
+            for vert in in_bm.verts:
+                if vert not in evs:
+                    vec = coo - vert.co
+                    dist = vec.length
+                    if dist <= radius:
+                        numax = max(max_dist, dist)
+                        numin = min(min_dist, dist)
+                        max_dist = numax
+                        min_dist = numin
+                        dist_dat.append([dist, vert.co, vert.normal])
+            dist_span = max_dist - min_dist
+            for d in dist_dat:
+                d_weight = 1.0
+                if weight_by_dist == True:
+                    if dist_span > 0.0:
+                        d_weight = 1.0 - (d[0]-min_dist)/dist_span
+                co_contribution = d[1] * d_weight
+                no_contribution = d[2] * d_weight
+                avg_depth += co_contribution
+                avg_norm += no_contribution
+                num_contributors += d_weight
+        if mode == "B":
+            done_verts = evs.copy()
+            dist_dat = []
+            out_iter = 0
+            next_batch = evs.copy()
+            weight_increment = 1.0/num_out
+            while out_iter < num_out:
+                this_batch = next_batch.copy()
+                next_batch.clear()
+                for bv in this_batch:
+                    done_verts.append(bv)
+                    for bve in bv.link_edges:
+                        for bvev in bve.verts:
+                            if bvev not in done_verts:
+                                dist_dat.append([out_iter, bvev.co, bvev.normal])
+                out_iter += 1
+            for d in dist_dat:
+                d_weight = 1.0
+                if weight_by_dist == True:
+                    d_weight = ((num_out + 1) - d[0]) * weight_increment
+                co_contribution = d[1] * d_weight
+                no_contribution = d[2] * d_weight
+                avg_depth += co_contribution
+                avg_norm += no_contribution
+                num_contributors += d_weight
+        avg_depth /= num_contributors
+        avg_normal = avg_norm.normalized()
+        covec = avg_depth - coo
+        codir = covec.normalized()
+        nor_dot = avg_normal.dot(codir)
+        dots = covec.length
+        dots *= (nor_dot * -1.0)
+        print('Average ontributors:', num_contributors, ' - dots combined:', dots, '- average normal:', avg_normal, '- Source coordinates:', coo, '- avg. coordinates:', avg_depth)
+        return(dots)
+
+
+
     def execute(self, context):
         props = context.scene.sloppy_props
         bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
@@ -104,11 +220,17 @@ class SloppySeamGen(bpy.types.Operator):
         attr_dict = [
             {"name": "AO", "type": "FLOAT_COLOR", "domain": "POINT", "layer": None},
             {"name": "eAO", "type": "FLOAT", "domain": "EDGE", "layer": None},
+            {"name": "depth", "type": "FLOAT", "domain": "EDGE", "layer": None},
             {"name": "edge_density", "type": "FLOAT", "domain": "EDGE", "layer": None},
             {"name": "avg_angle", "type": "FLOAT", "domain": "EDGE", "layer": None},
             {"name": "cost_to_boundary", "type": "FLOAT", "domain": "EDGE", "layer": None},
             {"name": "dist_to_boundary", "type": "FLOAT", "domain": "EDGE", "layer": None},
             ]
+        
+        if self.add_normalized_attr == True:
+            attr_dict.append({"name": "normalized_depth", "type": "FLOAT", "domain": "EDGE", "layer": None})
+            attr_dict.append({"name": "normalized_edge_density", "type": "FLOAT", "domain": "EDGE", "layer": None})
+            attr_dict.append({"name": "normalized_avg_angle", "type": "FLOAT", "domain": "EDGE", "layer": None})
 
         for nam in attr_dict:
             attr = props.find_or_add_attribute(nam["name"], nam["type"], nam["domain"])
@@ -116,6 +238,7 @@ class SloppySeamGen(bpy.types.Operator):
 
         vAO = props.get_dict_layer("AO", attr_dict)
         eAO = props.get_dict_layer("eAO", attr_dict)
+        depth = props.get_dict_layer("depth", attr_dict)
         edge_density = props.get_dict_layer("edge_density", attr_dict)
         avg_angle_lyr = props.get_dict_layer("avg_angle", attr_dict)
         cost_to_boundary = props.get_dict_layer("cost_to_boundary", attr_dict)
@@ -125,8 +248,11 @@ class SloppySeamGen(bpy.types.Operator):
         max_edge_density = 0.0
         min_avg_angle = 0.0
         max_avg_angle = 0.0
+        min_depth = 0.0
+        max_depth = 0.0
         ao_fac = self.ao_factor
         ed_fac = self.ed_factor
+        dpth_fac = self.depth_factor
         angle_fac = self.angle_factor
         avg_angle_fac = self.avg_angle_factor
 
@@ -134,9 +260,11 @@ class SloppySeamGen(bpy.types.Operator):
             result = 0.0
             ao = props.remap_val(e[eAO], 0, 1, -180, 180)
             ed = props.remap_val(e[edge_density], min_edge_density, max_edge_density, -180, 180)
+            dpth = props.remap_val(e[depth], min_depth, max_depth, -180, 180)
             if len(e.link_faces) > 1:
                 result += (ao * ao_fac)
                 result += (ed * ed_fac)
+                result += (dpth * dpth_fac)
                 result += (math.degrees(e.calc_face_angle_signed()) * angle_fac)
                 result += (e[avg_angle_lyr] * avg_angle_fac)
             return result
@@ -254,10 +382,17 @@ class SloppySeamGen(bpy.types.Operator):
                             avg_angle += math.degrees(e.calc_face_angle_signed())
                     avg_edge_length /= num_edges
                     avg_angle /= num_angles
+                this_depth = 0.0
+                if self.depth_factor > 0.0:
+                    this_depth = self.find_depth(bm, edge, props.calc_edge_center(edge), props.calc_edge_avg_normal(edge), self.depth_avg_rad, self.depth_avg_iters, self.depth_mode, self.depth_weight_by_dist)
                 new_max_density = max(avg_edge_length, max_edge_density)
                 new_min_density = min(avg_edge_length, min_edge_density)
                 new_max_angle = max(avg_angle, max_avg_angle)
                 new_min_angle = min(avg_angle, min_avg_angle)
+                new_max_depth = max(max_depth, this_depth)
+                new_min_depth = min(min_depth, this_depth)
+                max_depth = new_max_depth
+                min_depth = new_min_depth
                 max_edge_density = new_max_density
                 min_edge_density = new_min_density
                 max_avg_angle = new_max_angle
@@ -266,6 +401,7 @@ class SloppySeamGen(bpy.types.Operator):
                 edge[edge_density] = avg_edge_length
                 edge[avg_angle_lyr] = avg_angle
                 edge[eAO] = ao
+                edge[depth] = this_depth
             e_iter += 1
             remain_num = len(bm.edges) - e_iter
             if verbose == True:
@@ -274,6 +410,19 @@ class SloppySeamGen(bpy.types.Operator):
         all_edges.sort(key=angle_sort)
 
         remain_edges = all_edges.copy()
+
+        if self.add_normalized_attr == True:
+            ndpth = props.get_dict_layer("normalized_depth", attr_dict)
+            ned = props.get_dict_layer("normalized_edge_density", attr_dict)
+            naa = props.get_dict_layer("normalized_avg_angle", attr_dict)
+            for edg in all_edges:
+                if self.depth_factor > 0.0:
+                    if (max_depth - min_depth) > 0.0:
+                        edg[ndpth] = (edg[depth] - min_depth) / (max_depth - min_depth)
+                if (max_edge_density - min_edge_density) > 0.0:
+                    edg[ned] = (edg[edge_density] - min_edge_density) / (max_edge_density - min_edge_density)
+                if (max_avg_angle - min_avg_angle) > 0.0:
+                    edg[naa] = (edg[avg_angle_lyr] - min_avg_angle) / (max_avg_angle - min_avg_angle)
 
         seams = []
 
@@ -459,7 +608,7 @@ class SloppySeamGenVis(bpy.types.Operator):
 
     dome : bP(
         name = "Dome",
-        description = "Don't raycast from underneath object",
+        description = "No raycast from underneath object",
         default = True
         ) # type: ignore
     

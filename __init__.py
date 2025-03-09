@@ -2,6 +2,7 @@ import bpy
 import bpy_extras
 import bmesh
 from bpy_extras import bmesh_utils
+from importlib import reload
 import math
 import mathutils
 import bl_math

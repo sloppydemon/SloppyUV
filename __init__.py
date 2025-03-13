@@ -21,6 +21,7 @@ bl_info = {
 
 from SloppyUV.SloppySeamGeneration import SloppySeamGen # type: ignore
 from SloppyUV.SloppySeamGeneration import SloppySeamGenVis # type: ignore
+from SloppyUV.SloppySeamGeneration import SloppyIslandBoundaryConnect # type: ignore
 from SloppyUV.SloppySortIndexByDist import SortVertByDist # type: ignore
 from SloppyUV.SloppySortIndexByDist import SortEdgeByDist # type: ignore
 from SloppyUV.SloppySortIndexByDist import SortFaceByDist # type: ignore
@@ -3122,7 +3123,7 @@ class SloppyFindIslandBoundaries(bpy.types.Operator):
                         island = islands[ii]
                         break
         # vert_chains, vert_loop_subchains, vert_chains_eton, complete_loop_chains, complete_edge_chains, complete_face_chains
-        lcs, lcetons, ecs, fcs = props.find_island_boundaries_and_their_loops(in_bm, island, True, self.verbose)
+        lcs, lcetons, vcs, ecs, fcs = props.find_island_boundaries_and_their_loops(in_bm, island, True, self.verbose)
         
         if self.add_debug_attributes:
             props.find_or_add_attribute("normalized_loop_sequence", "FLOAT_COLOR", "CORNER")
@@ -3258,6 +3259,7 @@ classes = [SloppyProperties,
            SloppyAlignViewToSelected,
            SloppyFindContiguousSeams,
            SloppyFindIslandBoundaries,
+           SloppyIslandBoundaryConnect,
            SloppyBasicUVUnfold
            ]
 

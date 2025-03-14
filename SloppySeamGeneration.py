@@ -698,11 +698,8 @@ class SloppyIslandBoundaryConnect(bpy.types.Operator):
                 other_edges = []
                 other_loops = []
                 this_loop_chain = loop_chains[1].copy()
-                print(this_loop_chain)
                 this_vert_chain = vert_chains[1].copy()
-                print(this_vert_chain)
                 this_edge_chain = edge_chains[1].copy()
-                print(this_edge_chain)
                 for isf in island:
                     for isfe in isf.edges:
                         if isfe not in island_edges:

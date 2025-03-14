@@ -845,8 +845,8 @@ class SloppyIslandBoundaryConnect(bpy.types.Operator):
             bpy.ops.uv.unwrap(method='ANGLE_BASED', margin=0)
             
         bpy.context.active_object.data.update()
-
-        bpy.ops.uv.unwrap(method='ANGLE_BASED', margin=0)
+        if do_connect == True:
+            bpy.ops.uv.unwrap(method='ANGLE_BASED', margin=0)
 
         return {"FINISHED"}
 

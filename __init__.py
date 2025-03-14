@@ -771,6 +771,25 @@ class SloppyProperties(bpy.types.PropertyGroup):
     def calc_edge_center(self, edge):
         return(edge.verts[0].co.lerp(edge.verts[1].co, 0.5))
     
+    def edge_corners_per_vert(self, edge, vert):
+        corners = []
+        all_corners = []
+        for ef in edge.link_faces:
+            for efl in ef.loops:
+                all_corners.append(efl)
+        for v in edge.verts:
+            if v == vert:
+                for vl in v.link_loops:
+                    if vl in all_corners:
+                        corners.append(vl)
+        return corners
+    
+    def face_corner_per_vert(self, face, vert):
+        for loop in face.loops:
+            if loop.vert == vert:
+                return loop
+        return None
+    
     def calc_edge_avg_normal(self, edge, use_faces = False):
         if use_faces:
             add_nor = mathutils.Vector((0,0,0))

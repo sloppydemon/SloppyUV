@@ -649,7 +649,8 @@ class SloppyIslandBoundaryConnect(bpy.types.Operator):
         a_val = ((dat[3]+180.0)/180.0)*self.concavity_factor
         c_val = float(dat[4])*self.proximity_factor
         combined_val = z_val + a_val + c_val
-        print('Edge', dat[1].index, 'to vertex', dat[0].index, '- Sorting by values', z_val, '+', a_val, '+', c_val, '=', combined_val)
+        if self.verbose:
+            print('Edge', dat[1].index, 'to vertex', dat[0].index, '- Sorting by values', z_val, '+', a_val, '+', c_val, '=', combined_val)
         return combined_val
 
     def execute(self, context):
@@ -676,101 +677,127 @@ class SloppyIslandBoundaryConnect(bpy.types.Operator):
         
         loop_chains, loop_chains_eton, vert_chains, edge_chains, face_chains = props.find_island_boundaries_and_their_loops(bm, island, True, self.verbose)
 
-        if len(loop_chains) > 1:
-            do_connect = True
-        else:
-            if self.verbose:
-                print('\nConnecting of boundaries unnecessary since there is only one boundary.')
-        
-        island_edges = []
-        new_seam = []
-        
-
-        if do_connect == True:
-            this_loop_chain = []
-            this_vert_chain = []
-            this_edge_chain = []
-            next_chain = len(loop_chains) - 1
-            other_verts = []
-            other_edges = []
-            other_loops = []
-            this_loop_chain = loop_chains[1].copy()
-            print(this_loop_chain)
-            this_vert_chain = vert_chains[1].copy()
-            print(this_vert_chain)
-            this_edge_chain = edge_chains[1].copy()
-            print(this_edge_chain)
-            for isf in island:
-                for isfe in isf.edges:
-                    if isfe not in island_edges:
-                        island_edges.append(isfe)
-            for ec in edge_chains:
-                for ece in ec:
-                    if ece not in this_edge_chain:
-                        other_edges.append(ece)
-                        for ecev in ece.verts:
-                            if ecev not in other_verts:
-                                other_verts.append(ecev)
-                    if ece in this_edge_chain:
-                        for ecev in ece.verts:
-                            if ecev not in this_vert_chain:
-                                this_vert_chain.append(ecev)
-            for lv in loop_chains:
-                for lvl in lv:
-                    if lvl not in this_loop_chain:
-                        other_loops.append(lvl)
-                    else:
-                        if lvl.vert not in this_vert_chain:
-                            this_vert_chain.append(lvl.vert)
-
-            print('\nThere are still', len(loop_chains), 'loop chains in island.')
+        while len(loop_chains) > 1:
+            if len(loop_chains) > 1:
+                if self.verbose:
+                    print('\nThere are still', len(loop_chains), 'loop chains in island.')
+                do_connect = True
+            else:
+                if self.verbose:
+                    print('\nConnecting of boundaries unnecessary since there is only one boundary.')
             
-            other_boundary_found = False
-            next_verts = []
-            for vcv in this_vert_chain:
-                if vcv not in next_verts:
-                    next_verts.append(vcv)
+            island_edges = []
+            new_seam = []
+            
 
-            first_z = None
-            max_z = None
+            if do_connect == True:
+                this_loop_chain = []
+                this_vert_chain = []
+                this_edge_chain = []
+                other_verts = []
+                other_edges = []
+                other_loops = []
+                this_loop_chain = loop_chains[1].copy()
+                print(this_loop_chain)
+                this_vert_chain = vert_chains[1].copy()
+                print(this_vert_chain)
+                this_edge_chain = edge_chains[1].copy()
+                print(this_edge_chain)
+                for isf in island:
+                    for isfe in isf.edges:
+                        if isfe not in island_edges:
+                            island_edges.append(isfe)
+                for ec in edge_chains:
+                    for ece in ec:
+                        if ece not in this_edge_chain:
+                            other_edges.append(ece)
+                            for ecev in ece.verts:
+                                if ecev not in other_verts:
+                                    other_verts.append(ecev)
+                        if ece in this_edge_chain:
+                            for ecev in ece.verts:
+                                if ecev not in this_vert_chain:
+                                    this_vert_chain.append(ecev)
+                for lv in loop_chains:
+                    for lvl in lv:
+                        if lvl not in this_loop_chain:
+                            other_loops.append(lvl)
+                        else:
+                            if lvl.vert not in this_vert_chain:
+                                this_vert_chain.append(lvl.vert)
 
-            b_iter = 0
-            while other_boundary_found == False:
-                if b_iter > 0:
-                    print('Iteration', b_iter, '- Other boundary still not found.\n')
-                b_iter += 1
-                next_indices = []
-                pot_max_z = -999999.9
-                for nv in next_verts:
-                    next_indices.append(nv.index)
+                
+                
+                other_boundary_found = False
+                next_verts = []
+                for vcv in this_vert_chain:
+                    if vcv not in next_verts:
+                        next_verts.append(vcv)
+
+                first_z = None
+                max_z = None
+
+                b_iter = 0
+                while other_boundary_found == False:
+                    if b_iter > 0:
+                        if self.verbose:
+                            print('Iteration', b_iter, '- Other boundary still not found.\n')
+                    b_iter += 1
+                    next_indices = []
+                    pot_max_z = -999999.9
+                    for nv in next_verts:
+                        next_indices.append(nv.index)
+                        if not max_z:
+                            new_pot_max = max(pot_max_z, nv.co.z)
+                            pot_max_z = new_pot_max
                     if not max_z:
-                        new_pot_max = max(pot_max_z, nv.co.z)
-                        pot_max_z = new_pot_max
-                if not max_z:
-                    max_z = pot_max_z
-                        
-                print('Vertices to check:', next_indices)
-                these_verts = next_verts.copy()
-                next_verts.clear()
-                tve_dats = []
-                for tv in these_verts:
-                    for tve in tv.link_edges:
-                        if tve not in new_seam:
-                            if tve in island_edges:
-                                print('Vertex', tv.index, '> Edge', tve.index, '>')
-                                other_vert = tve.other_vert(tv)
-                                other_vert_loops = props.edge_corners_per_vert(tve, other_vert)
-                                edge_viable = True
-                                for ovl in other_vert_loops:
-                                    if ovl in this_loop_chain:
-                                        if edge_viable == True:
-                                            edge_viable = False
-                                            print('Edge', tve.index, 'not viable.')
-                                for ovl in other_vert.link_loops:
-                                    if ovl in other_loops:
+                        max_z = pot_max_z
+                            
+                    if self.verbose:
+                        print('Vertices to check:', next_indices)
+                    these_verts = next_verts.copy()
+                    next_verts.clear()
+                    tve_dats = []
+                    for tv in these_verts:
+                        for tve in tv.link_edges:
+                            if tve not in new_seam:
+                                if tve in island_edges:
+                                    if self.verbose:
+                                        print('Vertex', tv.index, '> Edge', tve.index, '>')
+                                    other_vert = tve.other_vert(tv)
+                                    other_vert_loops = props.edge_corners_per_vert(tve, other_vert)
+                                    edge_viable = True
+                                    boundary_found_for_this_edge = False
+                                    for ovl in other_vert_loops:
+                                        if ovl in this_loop_chain:
+                                            if edge_viable == True:
+                                                edge_viable = False
+                                                if self.verbose:
+                                                    print('Edge', tve.index, 'not viable.')
+                                    for ovl in other_vert.link_loops:
+                                        if ovl in other_loops:
+                                            if boundary_found_for_this_edge == False:
+                                                boundary_found_for_this_edge = True
+                                                other_boundary_found = True
+                                                if self.verbose:
+                                                    print('Other boundary found!\n')
+                                                tve_dat = []
+                                                tve_dat.append(other_vert)
+                                                tve_dat.append(tve)
+                                                tve_dat.append(other_vert.co.z)
+                                                try:
+                                                    tve_dat.append(tve.calc_face_angle_signed())
+                                                except:
+                                                    tve_dat.append(0.0)
+                                                tve_dat.append(int(-100.0*self.proximity_factor))
+                                                if first_z:
+                                                    tve_dat.append(first_z)
+                                                else:
+                                                    tve_dat.append(tv.co.z)
+                                                tve_dat.append(max_z)
+                                                tve_dats.append(tve_dat)
+                                    if edge_viable == True:
                                         if other_boundary_found == False:
-                                            other_boundary_found = True
-                                            print('Other boundary found!\n')
                                             tve_dat = []
                                             tve_dat.append(other_vert)
                                             tve_dat.append(tve)
@@ -779,71 +806,62 @@ class SloppyIslandBoundaryConnect(bpy.types.Operator):
                                                 tve_dat.append(tve.calc_face_angle_signed())
                                             except:
                                                 tve_dat.append(0.0)
-                                            tve_dat.append(int(-2.0*self.proximity_factor))
+                                            found_cost = False
+                                            next_vert_batch = [other_vert]
+                                            visited_edges = [tve]
+                                            current_cost = 0
+                                            while found_cost == False:
+                                                if self.verbose:
+                                                    print('Total cost for edge', tve.index, 'still not found. Current cost:', current_cost)
+                                                this_vert_batch = next_vert_batch.copy()
+                                                next_vert_batch.clear()
+                                                current_cost += 1
+                                                for tvbv in this_vert_batch:
+                                                    for tvbve in tvbv.link_edges:
+                                                        if tvbve in island_edges:
+                                                            if tvbve not in visited_edges:
+                                                                tvbveov = tvbve.other_vert(tvbv)
+                                                                for tvbveovl in tvbveov.link_loops:
+                                                                    if tvbveovl in other_loops:
+                                                                        if found_cost == False:
+                                                                            found_cost = True
+                                                                            if self.verbose:
+                                                                                print('Found cost, it was', current_cost, 'at vert', tvbveov.index)
+                                                                if found_cost == False:
+                                                                    next_vert_batch.append(tvbveov)
+                                                                visited_edges.append(tvbve)
+                                            tve_dat.append(current_cost)
                                             if first_z:
                                                 tve_dat.append(first_z)
                                             else:
                                                 tve_dat.append(tv.co.z)
                                             tve_dat.append(max_z)
                                             tve_dats.append(tve_dat)
-                                if edge_viable == True:
-                                    if other_boundary_found == False:
-                                        tve_dat = []
-                                        tve_dat.append(other_vert)
-                                        tve_dat.append(tve)
-                                        tve_dat.append(other_vert.co.z)
-                                        try:
-                                            tve_dat.append(tve.calc_face_angle_signed())
-                                        except:
-                                            tve_dat.append(0.0)
-                                        found_cost = False
-                                        next_vert_batch = [other_vert]
-                                        visited_edges = [tve]
-                                        current_cost = 0
-                                        while found_cost == False:
-                                            print('Total cost for edge', tve.index, 'still not found. Current cost:', current_cost)
-                                            this_vert_batch = next_vert_batch.copy()
-                                            next_vert_batch.clear()
-                                            current_cost += 1
-                                            for tvbv in this_vert_batch:
-                                                for tvbve in tvbv.link_edges:
-                                                    if tvbve in island_edges:
-                                                        if tvbve not in visited_edges:
-                                                            tvbveov = tvbve.other_vert(tvbv)
-                                                            for tvbveovl in tvbveov.link_loops:
-                                                                if tvbveovl in other_loops:
-                                                                    if found_cost == False:
-                                                                        found_cost = True
-                                                                        print('Found cost, it was', current_cost, 'at vert', tvbveov.index)
-                                                            if found_cost == False:
-                                                                next_vert_batch.append(tvbveov)
-                                                            visited_edges.append(tvbve)
-                                        tve_dat.append(current_cost)
-                                        if first_z:
-                                            tve_dat.append(first_z)
-                                        else:
-                                            tve_dat.append(tv.co.z)
-                                        tve_dat.append(max_z)
-                                        tve_dats.append(tve_dat)
-                tve_dats.sort(key=self.sort_by_z_angle_cost,reverse=True)
-                print('\nSorted:')
-                tve_dats.sort(key=self.sort_by_z_angle_cost)
-                next_verts = [tve_dats[0][0]]
-                first_z = tve_dats[0][5]
-                print('Edge', tve_dats[0][1].index, 'set as seam.\n')
-                tve_dats[0][1].seam = True
-                if tve_dats[0][1] not in new_seam:
-                    new_seam.append(tve_dats[0][1])
-            
-            bpy.context.active_object.data.update()
-            
-            for bmf in bm.faces:
-                bmf.select = False
+                    tve_dats.sort(key=self.sort_by_z_angle_cost,reverse=True)
+                    if self.verbose:
+                        print('\nSorted:')
+                    tve_dats.sort(key=self.sort_by_z_angle_cost)
+                    next_verts = [tve_dats[0][0]]
+                    first_z = tve_dats[0][5]
+                    if self.verbose:
+                        print('Edge', tve_dats[0][1].index, 'set as seam.\n')
+                    tve_dats[0][1].seam = True
+                    if tve_dats[0][1] not in new_seam:
+                        new_seam.append(tve_dats[0][1])
+                
+                bpy.context.active_object.data.update()
+                
+                for bmf in bm.faces:
+                    bmf.select = False
 
-            for isf in island:
-                isf.select = True
-            bpy.ops.uv.unwrap(method='ANGLE_BASED', margin=0)
-            
+                for isf in island:
+                    isf.select = True
+                bpy.ops.uv.unwrap(method='ANGLE_BASED', margin=0)
+
+                bpy.context.active_object.data.update()
+
+                loop_chains, loop_chains_eton, vert_chains, edge_chains, face_chains = props.find_island_boundaries_and_their_loops(bm, island, True, self.verbose)
+                
         bpy.context.active_object.data.update()
         if do_connect == True:
             bpy.ops.uv.unwrap(method='ANGLE_BASED', margin=0)

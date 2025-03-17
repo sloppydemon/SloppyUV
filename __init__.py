@@ -31,6 +31,8 @@ from SloppyUV.SloppyProcedurals import SloppyQuadUVUnfold # type: ignore
 from SloppyUV.SloppyProcedurals import SloppyUVToMesh # type: ignore
 from SloppyUV.SloppyProcedurals import RedoUVEdgeLength # type: ignore
 from SloppyUV.SloppyProcedurals import SloppyBasicUVUnfold # type: ignore
+from SloppyUV.SloppyProcedurals import SloppyBoundaryFirstUVUnfold # type: ignore
+
 
 class SloppyProperties(bpy.types.PropertyGroup):
     
@@ -122,6 +124,14 @@ class SloppyProperties(bpy.types.PropertyGroup):
         pt_y = V.dot(plane_up)
         out_vec = mathutils.Vector((pt_x, pt_y))
         return out_vec
+    
+    def plane_axes_from_normal(self, plane_normal):
+        """ Returns a 2D vector of a point projected onto a plane given its center and normal """
+        plane_up = plane_normal.orthogonal()
+        right_rot_mat = mathutils.Matrix.Rotation(math.radians(90), 4, plane_normal)
+        plane_right = plane_up.copy()
+        plane_right.rotate(right_rot_mat)
+        return plane_right, plane_up
     
     def project_point_on_plane_axes(self, plane_center, plane_x, plane_y, point_co):
         """ Returns a 2D vector of a point projected onto a plane given its two axes """
@@ -426,16 +436,19 @@ class SloppyProperties(bpy.types.PropertyGroup):
             first_loop = next_loop
             vert_chain.append(next_loop.vert)
             face_chain.append(next_loop.face)
+
+            edge_between = None
+            
+            lc_iter = 0
             while next_loop != None:
+                full_circle = None
                 this_loop = next_loop
                 next_loop = None
-                edge_between = None
                 loop_chain.append(this_loop)
                 if this_loop not in loops_done:
                     loops_done.append(this_loop)
                 if this_loop in loops_todo:
                     loops_todo.remove(this_loop)
-                full_circle = False
 
                 if not next_loop:
                     for tle in this_loop.vert.link_edges:
@@ -446,33 +459,41 @@ class SloppyProperties(bpy.types.PropertyGroup):
                                         if tleovl.face == this_loop.face:
                                             next_loop = tleovl
                                             edge_between = tle
-
                                     else:
-                                        if tleovl == first_loop:
-                                            full_circle = True
-                                            edge_between = tle
+                                        if lc_iter > 1:
+                                            if tleovl.face == this_loop.face:
+                                                if tleovl == first_loop:
+                                                    full_circle = True
+                                                    edge_between = tle
                     if next_loop:
                         edge_chain.append(edge_between)
+                        loop_chain_eton.append(edge_between)
 
                 if not next_loop:
                     for tlvl in this_loop.vert.link_loops:
                         if not next_loop:
-                            if tlvl not in loops_done:
-                                share_face = False
-                                for tlvlfe in tlvl.face.edges:
-                                    if tlvlfe not in boundary_edges:
-                                        for tlvlfef in tlvlfe.link_faces:
-                                            if tlvlfef == this_loop.face:
-                                                share_face = True
-                                if share_face == True:
+                            share_face = False
+                            for tlvlfe in tlvl.face.edges:
+                                if tlvlfe not in boundary_edges:
+                                    for tlvlfef in tlvlfe.link_faces:
+                                        if tlvlfef == this_loop.face:
+                                            share_face = True
+                            if share_face == True:
+                                if tlvl not in loops_done:
                                     next_loop = tlvl
-                            else:
-                                if tlvl == this_loop:
-                                    full_circle = True
+                                else:
+                                    if lc_iter > 1:
+                                        if tlvl == first_loop:
+                                            full_circle = True
+                                            edge_between = None
                     if next_loop:
                         face_chain.append(this_loop.face)
-                    
+                        loop_chain_eton.append(None)
+
+                if full_circle == True:
                     loop_chain_eton.append(edge_between)
+                
+                lc_iter +=1
             loop_chains.append(loop_chain)
             loop_chains_eton.append(loop_chain_eton)
             vert_chains.append(vert_chain)
@@ -3279,7 +3300,8 @@ classes = [SloppyProperties,
            SloppyFindContiguousSeams,
            SloppyFindIslandBoundaries,
            SloppyIslandBoundaryConnect,
-           SloppyBasicUVUnfold
+           SloppyBasicUVUnfold,
+           SloppyBoundaryFirstUVUnfold
            ]
 
 def register():

@@ -21,11 +21,15 @@ class SloppyProcAttrBake(bpy.types.Operator):
             {"name" : "NumPaths", "type":"INT", "domain":"POINT", "layer": None},
             {"name" : "NumHits", "type":"INT", "domain":"POINT", "layer": None},
             {"name" : "IslandIndex", "type":"INT", "domain":"FACE", "layer": None},
+            {"name" : "NumPaths_NumHits_IslI_Col", "type":"FLOAT_COLOR", "domain":"CORNER", "layer": None},
             {"name" : "FaceAlongSeamIndex", "type":"INT", "domain":"FACE", "layer": None},
+            {"name" : "SeamDist_DistAlong_FAlongSeamI_Col", "type":"FLOAT_COLOR", "domain":"CORNER", "layer": None},
             {"name" : "NearSeamTangent", "type":"FLOAT_VECTOR", "domain":"CORNER", "layer": None},
+            {"name" : "NearSeamTangent_Col", "type":"FLOAT_COLOR", "domain":"CORNER", "layer": None},
             {"name" : "Curvature", "type":"FLOAT", "domain":"POINT", "layer": None},
             {"name" : "Thickness", "type":"FLOAT", "domain":"POINT", "layer": None},
             {"name" : "FaceThickness", "type":"FLOAT", "domain":"POINT", "layer": None},
+            {"name" : "CrvThkFthk_Col", "type":"FLOAT_COLOR", "domain":"POINT", "layer": None},
             ]
         
         for nam in attr_dict:
@@ -44,6 +48,9 @@ class SloppyProcAttrBake(bpy.types.Operator):
         num_hits = props.get_dict_layer("NumHits", attr_dict)
         island_index = props.get_dict_layer("IslandIndex", attr_dict)
         face_index = props.get_dict_layer("FaceAlongSeamIndex", attr_dict)
+        numpaths_numhits_isli_col = props.get_dict_layer("NumPaths_NumHits_IslI_Col", attr_dict)
+        seamdist_distalong_falongseami_col = props.get_dict_layer("SeamDist_DistAlong_FAlongSeamI_Col", attr_dict)
+        crvthkfthk_col = props.get_dict_layer("CrvThkFthk_Col", attr_dict)
 
         bmi = bpy_extras.bmesh_utils.bmesh_linked_uv_islands(bm, uv_layer)
         if props.verbose:

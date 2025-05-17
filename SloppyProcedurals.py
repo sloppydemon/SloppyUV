@@ -4338,30 +4338,23 @@ class SloppyBoundaryFirstUVUnfold(bpy.types.Operator):
             ],
         ) # type: ignore
     
-    initial_edge_mode : eP(
-        name = "Init Edge",
-        description = "Selection of initial edge",
+    edge_length_mode : eP(
+        name = "Edge Length Mode",
+        description = "How the edge lengths are translated to UV space",
         items = [
-            ("A", "Automatic", "Relative to averaged center of UV selection"),
-            ("B", "Selected", "Selected edge (will fallback to automatic selection if selected edge is boundary or seam)")
+            ("A", "As Is", "World space edge lengths are used"),
+            ("B", "Projected", "Edge lengths are calculated in the same plane as the rotation angle")
             ],
         ) # type: ignore
     
-    init_edge_mode_dir : eP(
-        name = "Init Edge Direction",
-        description = "Direction of initial edge - useful if result is 'upside down'",
+    proj_norm_mode : eP(
+        name = "Projection Normal Mode",
+        description = "How the normal of the angle projection plane is calculated",
         items = [
-            ("A", "Default", "From vert 1 to vert 0"),
-            ("B", "Reversed", "From vert 0 to 1")
-            ],
-        ) # type: ignore
-    
-    angle_projection_mode : eP(
-        name = "Angle Projection Mode",
-        description = "How the projected angles of the face corners of each vertex are used",
-        items = [
-            ("A", "Sort Criteria", "Projected angles are used to sort face corners, then face corners' calculated angles (divided by combined face corner angles and multiplied by 360) are used for actual rotation"),
-            ("B", "Projected Angles", "Projected angles are used as is, divided by combined face corner angles and multiplied by 360")
+            ("A", "Source Vertex", "Normal of the vertex traveled from"),
+            ("B", "Destination Vertex", "Normal of the vertex traveled to"),
+            ("C", "Edge Average", "Average of the normals of traveled edge's vertices"),
+            ("D", "Average", "Average of the surrounding faces")
             ],
         ) # type: ignore
     
@@ -4369,7 +4362,7 @@ class SloppyBoundaryFirstUVUnfold(bpy.types.Operator):
         name = "Quantize Normals",
         description = "How the projected angles of the face corners of each vertex are used",
         items = [
-            ("A", "None", ""),
+            ("A", "No", ""),
             ("B", "6", "Normal is quantized to the faces of a cube"),
             ("C", "26", "Normal is quantized to all the elements (vertices, edges, faces) of a cube")
             ],
@@ -4379,18 +4372,6 @@ class SloppyBoundaryFirstUVUnfold(bpy.types.Operator):
         name = "Selected Islands Only",
         description = "Restrict to UV islands with a selection",
         default=True
-        ) # type: ignore
-    
-    recalc_full_circle : bP(
-        name = "Racalculate Angles",
-        description = "Recalculate angles to equal 360 degrees (or debug value found below) combined",
-        default=True
-        ) # type: ignore
-    
-    smoothing : iP(
-        name = "Smooothing Iterations",
-        description = "For each smoothing iteration, another pass is allowed for each vertex, averaged with last pass",
-        default=2
         ) # type: ignore
     
     debug_fcd : fP(
@@ -4550,21 +4531,26 @@ class SloppyBoundaryFirstUVUnfold(bpy.types.Operator):
                             island_edges.append(iife)
                 
                 lcf = loop_chains[0].copy()
-                lcfe = loop_chains_eton[0].copy()
+                lcfes = loop_chains_eton[0].copy()
                 lcf_loops = []
                 lcf_pos = []
                 lcr = loop_chains[0].copy()
                 lcr.reverse()
-                lcre = loop_chains_eton[0].copy()
-                lcre.reverse()
-                lcre_pop = lcre.pop(0)
-                lcre.append(lcre_pop)
+                lcres = loop_chains_eton[0].copy()
+                lcres.reverse()
+                lcres_pop = lcres.pop(0)
+                lcres.append(lcres_pop)
                 lcr_loops = []
                 lcr_pos = []
 
+                full_rotation_f = 0.0
+                full_rotation_r = 0.0
+                rotations_f = 0
+                rotations_r = 0
+
                 print('Loop chain length:', len(lcf))
-                print('Edge to next chain length:', len(lcfe))
-                for nlcfi, nlcfl, nlcfe, nlcrl, nlcre in zip(range(len(lcf)), lcf, lcfe, lcr, lcre):
+                print('Edge to next chain length:', len(lcfes))
+                for nlcfi, nlcfl, nlcfe, nlcrl, nlcre in zip(range(len(lcf)), lcf, lcfes, lcr, lcres):
                     nlcfe_str = None
                     if nlcfe:
                         nlcfe_str = str(nlcfe.index)
@@ -4573,21 +4559,20 @@ class SloppyBoundaryFirstUVUnfold(bpy.types.Operator):
                         nlcre_str = str(nlcre.index)
                     print(nlcfi, ':', nlcfl.index, '-', nlcfe_str, '<--->', nlcrl.index, '-', nlcre_str)
 
-                lcfe_iter = 0
-                last_edge_f = None
-                while not last_edge_f:
-                    lcfe_iter -= 1
-                    last_edge_f = lcfe[lcfe_iter]
-                print(last_edge_f)
+                #region Measure rotation
+                lcfe_iter_mr = 0
+                last_edge_f_mr = None
+                while not last_edge_f_mr:
+                    lcfe_iter_mr -= 1
+                    last_edge_f_mr = lcfes[lcfe_iter_mr]
                 last_uvdirf = mathutils.Vector((1,0))
                 last_vec_f = None
 
-                lcre_iter = 0
-                last_edge_r = None
-                while not last_edge_r:
-                    lcre_iter -= 1
-                    last_edge_r = lcre[lcre_iter]
-                print(last_edge_r)
+                lcre_iter_mr = 0
+                last_edge_r_mr = None
+                while not last_edge_r_mr:
+                    lcre_iter_mr -= 1
+                    last_edge_r_mr = lcres[lcre_iter_mr]
                 last_uvdirr = mathutils.Vector((1,0))
                 last_vec_r = None
 
@@ -4596,8 +4581,157 @@ class SloppyBoundaryFirstUVUnfold(bpy.types.Operator):
 
                 last_f_was_edge = False
 
+                
                 f_iter = 0
-                for lcfl, lcfe in zip(lcf, lcfe):
+                for lcfl, lcfe in zip(lcf, lcfes):
+                    # lcf_loops.append(lcfl.index)
+                    # lcf_pos.append(iposf)
+                    if lcfe:
+                        edge_length_f = lcfe.calc_length()
+                        ivf = lcfl.vert
+                        ovf = lcfe.other_vert(ivf)
+                        ivfna = ivf.normal
+                        if self.proj_norm_mode != "A":
+                            if self.proj_norm_mode == "B":
+                                ivfna = ovf.normal
+                            if self.proj_norm_mode == "C":
+                                ivfna += ovf.normal
+                            if self.proj_norm_mode == "D":
+                                for ivff in ivf.link_faces:
+                                    if ivff in island:
+                                        ivfna += ivff.normal
+                        ivfn = ivfna.normalized()
+                        if self.quant_norm != "A":
+                            qlst_f = None
+                            if self.quant_norm == "B":
+                                qlst_f = self.make_quantize_six(ivfn)
+                            if self.quant_norm == "C":
+                                qlst_f = self.make_quantize_twentysix(ivfn)
+                            if qlst_f:
+                                qlst_f.sort(key=self.quantize_sort, reverse=True)
+                                ivfn = qlst_f[0][0]
+                                print('Quantized normal:', qlst_f[0][0].x, qlst_f[0][0].y, qlst_f[0][0].z)
+                        plane_x_f, plane_y_f = props.plane_axes_from_normal(ivfn)
+                        if not last_vec_f:
+                            lovf = last_edge_f_mr.other_vert(ivf)
+                            lvec_f = -props.project_point_on_plane_axes(ivf.co, plane_x_f, plane_y_f, lovf.co)
+                            last_vec_f = lvec_f.normalized()
+                        new_vec_f = props.project_point_on_plane_axes(ivf.co, plane_x_f, plane_y_f, ovf.co)
+                        new_vec_nf = new_vec_f.normalized()
+                        new_angle_f = last_vec_f.angle_signed(new_vec_nf)
+                        this_matrix_f = mathutils.Matrix.Rotation(-new_angle_f, 2, 'Z')
+                        full_rotation_f += new_angle_f
+                        rotations_f += 1
+                        last_uvdirf.rotate(this_matrix_f)
+                        new_iposf = iposf + (last_uvdirf * edge_length_f)
+                        iposf = new_iposf
+                        last_edge_f_mr = lcfe
+                        last_vec_f = None
+                        last_f_was_edge = True
+                    else:
+                        last_f_was_edge = False
+                    f_iter += 1
+
+                # iposr = iposf.copy()
+                last_r_was_edge = False
+
+                r_iter = 0
+                for lcrl, lcre in zip(lcr, lcres):
+                    # lcr_loops.append(lcrl.index)
+                    # lcr_pos.append(iposr)
+                    if lcre:
+                        edge_length_r = lcre.calc_length()
+                        ivr = lcrl.vert
+                        ovr = lcre.other_vert(ivr)
+                        ivrna = ivr.normal
+                        if self.proj_norm_mode != "A":
+                            if self.proj_norm_mode == "B":
+                                ivrna = ovr.normal
+                            if self.proj_norm_mode == "C":
+                                ivrna += ovr.normal
+                            if self.proj_norm_mode == "D":
+                                for ivrf in ivr.link_faces:
+                                    if ivrf in island:
+                                        ivrna += ivrf.normal
+                        ivrn = ivrna.normalized()
+                        if self.quant_norm != "A":
+                            qlst_r = None
+                            if self.quant_norm == "B":
+                                qlst_r = self.make_quantize_six(ivrn)
+                            if self.quant_norm == "C":
+                                qlst_r = self.make_quantize_twentysix(ivrn)
+                            if qlst_r:
+                                qlst_r.sort(key=self.quantize_sort, reverse=True)
+                                ivrn = qlst_r[0][0]
+                                print('Quantized normal:', qlst_r[0][0].x, qlst_r[0][0].y, qlst_r[0][0].z)
+                        plane_x_r, plane_y_r = props.plane_axes_from_normal(ivrn)
+                        if not last_vec_r:
+                            lovr = last_edge_r_mr.other_vert(ivr)
+                            lvec_r = -props.project_point_on_plane_axes(ivr.co, plane_x_r, plane_y_r, lovr.co)
+                            last_vec_r = lvec_r.normalized()
+                        new_vec_r = props.project_point_on_plane_axes(ivr.co, plane_x_r, plane_y_r, ovr.co)
+                        new_vec_nr = new_vec_r.normalized()
+                        new_angle_r = last_vec_r.angle_signed(new_vec_nr)
+                        this_matrix_r = mathutils.Matrix.Rotation(-new_angle_r, 2, 'Z')
+                        full_rotation_r -= new_angle_r
+                        rotations_r += 1
+                        last_uvdirr.rotate(this_matrix_r)
+                        new_iposr = iposr + (last_uvdirr * edge_length_r)
+                        iposr = new_iposr
+                        last_edge_r_mr = lcre
+                        last_vec_r = None
+                        last_r_was_edge = True
+                    else:
+                        last_r_was_edge = False
+                    r_iter += 1
+                
+                
+                rot_fac_f = self.debug_fcd/math.degrees(full_rotation_f)
+                rot_fac_r = self.debug_fcd/math.degrees(full_rotation_r)
+
+                print('Full rotation forward:', math.degrees(full_rotation_f), '- Rotation factor forward:', rot_fac_f)
+                print('Full rotation reverse:', math.degrees(full_rotation_r), '- Rotation factor reverse:', rot_fac_r)
+                
+                #endregion
+
+                #region Rotation
+                lcfe_iter = 0
+                last_edge_f = None
+                while not last_edge_f:
+                    lcfe_iter -= 1
+                    last_edge_f = lcfes[lcfe_iter]
+                print(last_edge_f)
+                last_uvdirf = mathutils.Vector((1,0))
+                last_vec_f = None
+
+                lcre_iter = 0
+                last_edge_r = None
+                while not last_edge_r:
+                    lcre_iter -= 1
+                    last_edge_r = lcres[lcre_iter]
+                print(last_edge_r)
+                last_uvdirr = mathutils.Vector((-1,0))
+                last_vec_r = None
+
+                # ("A", "Init Edge", "Init edge placed at U:0.5 V:0.5"),
+                # ("B", "Init Edge to Cursor", "Init edge placed at cursor"),
+                # ("C", "Center", "Island center placed at U:0.5 V:0.5"),
+                # ("D", "Center to Cursor", "Island center placed at cursor"),
+                # ("E", "Positive UV Space", "Shift pivot to keep everything in positive UV space")
+                
+                iposf = mathutils.Vector((0,0))
+                iposr = mathutils.Vector((0,0))
+                if self.transform_pivot == "A":
+                    iposf = mathutils.Vector((.5,.5))
+                    iposr = mathutils.Vector((.5,.5))
+                if self.transform_pivot == "B":
+                    iposf = curpos
+                    iposr = curpos
+
+                last_f_was_edge = False
+
+                f_iter = 0
+                for lcfl, lcfe in zip(lcf, lcfes):
                     lcf_loops.append(lcfl.index)
                     lcf_pos.append(iposf)
                     if lcfe:
@@ -4605,9 +4739,15 @@ class SloppyBoundaryFirstUVUnfold(bpy.types.Operator):
                         ivf = lcfl.vert
                         ovf = lcfe.other_vert(ivf)
                         ivfna = ivf.normal
-                        for ivff in ivf.link_faces:
-                            if ivff in island:
-                                ivfna += ivff.normal
+                        if self.proj_norm_mode != "A":
+                            if self.proj_norm_mode == "B":
+                                ivfna = ovf.normal
+                            if self.proj_norm_mode == "C":
+                                ivfna += ovf.normal
+                            if self.proj_norm_mode == "D":
+                                for ivff in ivf.link_faces:
+                                    if ivff in island:
+                                        ivfna += ivff.normal
                         ivfn = ivfna.normalized()
                         if self.quant_norm != "A":
                             qlst_f = None
@@ -4623,37 +4763,47 @@ class SloppyBoundaryFirstUVUnfold(bpy.types.Operator):
                         if not last_vec_f:
                             lovf = last_edge_f.other_vert(ivf)
                             lvec_f = -props.project_point_on_plane_axes(ivf.co, plane_x_f, plane_y_f, lovf.co)
+                            if self.edge_length_mode == "B":
+                                edge_length_f = lvec_f.length
                             last_vec_f = lvec_f.normalized()
                         new_vec_f = props.project_point_on_plane_axes(ivf.co, plane_x_f, plane_y_f, ovf.co)
                         new_vec_nf = new_vec_f.normalized()
                         new_angle_f = last_vec_f.angle_signed(new_vec_nf)
-                        this_matrix_f = mathutils.Matrix.Rotation(-new_angle_f, 2, 'Z')
+                        adj_angle_f = new_angle_f * rot_fac_f
+                        this_matrix_f = mathutils.Matrix.Rotation(-adj_angle_f, 2, 'Z')
                         last_uvdirf.rotate(this_matrix_f)
                         new_iposf = iposf + (last_uvdirf * edge_length_f)
                         iposf = new_iposf
                         last_edge_f = lcfe
                         last_vec_f = None
-                        print('( Fwd. step', f_iter, ') Vertex:', lcfl.vert.index, '- loop:', lcfl.index, '- edge to next vertex:', lcfe.index, '- next vertex:', ovf.index, '\n   - edge length:', edge_length_f, '- angle:', math.degrees(-new_angle_f), '\n   - new UV direction:', last_uvdirf, '- next UV position:', iposf)
+                        print('( Fwd. step', f_iter, ') Vertex:', lcfl.vert.index, '- loop:', lcfl.index, '- edge to next vertex:', lcfe.index, '- next vertex:', ovf.index, '\n   - edge length:', edge_length_f, '- angle:', math.degrees(-new_angle_f), '- adjusted angle:', math.degrees(-adj_angle_f), '\n   - new UV direction:', last_uvdirf, '- next UV position:', iposf)
                         last_f_was_edge = True
                     else:
                         print('( Fwd. step', f_iter, ') Vertex', lcfl.vert.index, '- loop', lcfl.index, '\n   - current UV position:', iposf)
                         last_f_was_edge = False
                     f_iter += 1
 
-                iposr = iposf.copy()
+                # iposr = iposf.copy()
                 last_r_was_edge = False
 
                 r_iter = 0
-                for lcrl, lcre in zip(lcr, lcre):
+                for lcrl, lcre in zip(lcr, lcres):
                     lcr_loops.append(lcrl.index)
                     lcr_pos.append(iposr)
                     if lcre:
                         edge_length_r = lcre.calc_length()
                         ivr = lcrl.vert
+                        ovr = lcre.other_vert(ivr)
                         ivrna = ivr.normal
-                        for ivrf in ivr.link_faces:
-                            if ivrf in island:
-                                ivrna += ivrf.normal
+                        if self.proj_norm_mode != "A":
+                            if self.proj_norm_mode == "B":
+                                ivrna = ovr.normal
+                            if self.proj_norm_mode == "C":
+                                ivrna += ovr.normal
+                            if self.proj_norm_mode == "D":
+                                for ivrf in ivr.link_faces:
+                                    if ivrf in island:
+                                        ivrna += ivrf.normal
                         ivrn = ivrna.normalized()
                         if self.quant_norm != "A":
                             qlst_r = None
@@ -4665,27 +4815,31 @@ class SloppyBoundaryFirstUVUnfold(bpy.types.Operator):
                                 qlst_r.sort(key=self.quantize_sort, reverse=True)
                                 ivrn = qlst_r[0][0]
                                 print('Quantized normal:', qlst_r[0][0].x, qlst_r[0][0].y, qlst_r[0][0].z)
-                        ovr = lcre.other_vert(ivr)
                         plane_x_r, plane_y_r = props.plane_axes_from_normal(ivrn)
                         if not last_vec_r:
                             lovr = last_edge_r.other_vert(ivr)
                             lvec_r = -props.project_point_on_plane_axes(ivr.co, plane_x_r, plane_y_r, lovr.co)
+                            if self.edge_length_mode == "B":
+                                edge_length_r = lvec_r.length
                             last_vec_r = lvec_r.normalized()
                         new_vec_r = props.project_point_on_plane_axes(ivr.co, plane_x_r, plane_y_r, ovr.co)
                         new_vec_nr = new_vec_r.normalized()
                         new_angle_r = last_vec_r.angle_signed(new_vec_nr)
-                        this_matrix_r = mathutils.Matrix.Rotation(-new_angle_r, 2, 'Z')
+                        adj_angle_r = new_angle_r * rot_fac_r
+                        this_matrix_r = mathutils.Matrix.Rotation(-adj_angle_r, 2, 'Z')
                         last_uvdirr.rotate(this_matrix_r)
                         new_iposr = iposr + (last_uvdirr * edge_length_r)
                         iposr = new_iposr
                         last_edge_r = lcre
                         last_vec_r = None
-                        print('( Rev. step', r_iter, ') Vertex', lcrl.vert.index, '- loop', lcrl.index, '- edge to next vertex:', lcre.index, '- next vertex:', ovf.index, '\n   - edge length:', edge_length_r, '- angle:', math.degrees(-new_angle_r), '\n   - new UV direction:', last_uvdirr, '- current UV position:', iposr)
+                        print('( Rev. step', r_iter, ') Vertex', lcrl.vert.index, '- loop', lcrl.index, '- edge to next vertex:', lcre.index, '- next vertex:', ovf.index, '\n   - edge length:', edge_length_r, '- angle:', math.degrees(-new_angle_r), '- adjusted angle:', math.degrees(-adj_angle_r), '\n   - new UV direction:', last_uvdirr, '- current UV position:', iposr)
                         last_r_was_edge = True
                     else:
                         print('( Rev. step', r_iter, ') Vertex', lcrl.vert.index, '- loop', lcrl.index, '\n   - current UV position:', iposr)
                         last_r_was_edge = False
                     r_iter += 1
+                #endregion
+
 
                 # if last_f_was_edge == False or last_r_was_edge == False:
                 #     lcf_loops.append(lcf[0].index)
@@ -4713,6 +4867,8 @@ class SloppyBoundaryFirstUVUnfold(bpy.types.Operator):
                             r_mid = (lcr_pos[0] + lcr_pos[-1]) / 2.0
                             # l_mid = f_mid.lerp(r_mid, 0.5)
                             l_mid = (f_mid + r_mid) / 2.0
+                            # fp = (lcf_pos[0] + lcf_pos[-1]) / 2.0
+                            # fp = lcf_pos[0].lerp(lcf_pos[-1], 0.5)
                     print('Vertex', lf.vert.index, '> loop', lf.index, '--> new position:', l_mid)
                     lf[uv_layer].uv = l_mid
                     lf[uv_layer].pin_uv = True

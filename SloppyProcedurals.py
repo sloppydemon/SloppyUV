@@ -859,7 +859,7 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
                                     is_selected_face = True
                                 else:
                                     if props.verbose: print("Too inconsistent mesh! Aborting!")
-                                    return  {"CANCELED"}
+                                    return  {"CANCELLED"}
                             else:
                                 other_tri = get_adjacent_triangle(init_face)
                                 if other_tri[0] != None:
@@ -876,7 +876,7 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
                                         init_face_is_virtual = False
                                     else:
                                         if props.verbose: print("Too inconsistent mesh! Aborting!")
-                                        return  {"CANCELED"}
+                                        return  {"CANCELLED"}
                     if len(faces_selected) == 0:
                         faces_remain.sort(key=regularity_sort)
                         init_face = faces_remain[0]
@@ -894,7 +894,7 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
                                     init_virtual_face = [init_face]
                                 else:
                                     if props.verbose: print("Too inconsistent mesh! Aborting!")
-                                    return  {"CANCELED"}
+                                    return  {"CANCELLED"}
                 else:
                     faces_remain.sort(key=regularity_sort)
                     init_face = faces_remain[0]
@@ -912,7 +912,7 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
                                 init_virtual_face = [init_face]
                             else:
                                 if props.verbose: print("Too inconsistent mesh! Aborting!")
-                                return  {"CANCELED"}
+                                return  {"CANCELLED"}
 
                 current_normal = init_face.normal
 
@@ -2617,7 +2617,7 @@ class SloppyDeTri(bpy.types.Operator):
                                     is_selected_face = True
                                 else:
                                     if props.verbose: print("Too inconsistent mesh! Aborting!")
-                                    return  {"CANCELED"}
+                                    return  {"CANCELLED"}
                             else:
                                 other_tri = get_adjacent_triangle(init_face)
                                 if other_tri[0] != None:
@@ -2634,7 +2634,7 @@ class SloppyDeTri(bpy.types.Operator):
                                         init_face_is_virtual = False
                                     else:
                                         if props.verbose: print("Too inconsistent mesh! Aborting!")
-                                        return  {"CANCELED"}
+                                        return  {"CANCELLED"}
                     if len(faces_selected) == 0:
                         faces_remain.sort(key=regularity_sort)
                         init_face = faces_remain[0]
@@ -2652,7 +2652,7 @@ class SloppyDeTri(bpy.types.Operator):
                                     init_virtual_face = [init_face]
                                 else:
                                     if props.verbose: print("Too inconsistent mesh! Aborting!")
-                                    return  {"CANCELED"}
+                                    return  {"CANCELLED"}
                 else:
                     faces_remain.sort(key=regularity_sort)
                     init_face = faces_remain[0]
@@ -2670,7 +2670,7 @@ class SloppyDeTri(bpy.types.Operator):
                                 init_virtual_face = [init_face]
                             else:
                                 if props.verbose: print("Too inconsistent mesh! Aborting!")
-                                return  {"CANCELED"}
+                                return  {"CANCELLED"}
 
                 current_normal = init_face.normal
 

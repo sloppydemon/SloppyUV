@@ -155,6 +155,13 @@ class SloppyProperties(bpy.types.PropertyGroup):
     def sort_list_of_lists_by_first_item_length(self, list_in_a_list_of_lists):
         return len(list_in_a_list_of_lists[0])
     
+    def sort_verts_by_nearest_most_opposite(self, two_vert_lst):
+        distance = math.dist(two_vert_lst[0].co, two_vert_lst[1].co)
+        pco_dot_vco = -two_vert_lst[0].co.dot(two_vert_lst[1].co)
+        pno_dot_vno = two_vert_lst[0].normal.dot(two_vert_lst[1].normal)
+        # return(pco_dot_vco + (pno_dot_vno * two_vert_lst[2]))
+        return(pco_dot_vco)
+    
     def find_contiguous_seams(self, bm, select_seams_by_index = False, select_index_start = 0, select_index_end = 0, sort_by_length = True, verbose = False):
         """ Returns lists (seams, face corners to the right, face corners to the left, boolean that is True if seam is open-ended (that is if one end does not end in a seam or boundary edge), boolean that is True if seam is isolated (that is if it never touches another seam)) of contiguous seams (which way is contiguous at crossroad seams will be decided according to which next seam is most well-aligned with the last) and two lists of face corners belonging on either side of the seam """
         seams = []
@@ -3262,6 +3269,87 @@ class SloppyAlignViewToSelected(bpy.types.Operator):
             props.align_view3d_against_normal(nor, cur_view)
             props.set_view3d_lookat(avg_loc + avg_obj_loc)
         return {"FINISHED"}
+    
+class SloppyFindMidpoints(bpy.types.Operator):
+    bl_idname = "operator.find_midpoints"
+    bl_label = "Find Mesh Midpoints"
+    bl_description = ""
+    bl_options = {'REGISTER', 'UNDO'}
+
+    iP = bpy.props.IntProperty
+    fP = bpy.props.FloatProperty
+    fvP = bpy.props.FloatVectorProperty
+    bP = bpy.props.BoolProperty
+    eP = bpy.props.EnumProperty
+    bvP = bpy.props.BoolVectorProperty
+    sP = bpy.props.StringProperty
+
+    def fmp_dist_sort(self, two_verts_lst):
+        sort_dist = math.dist(two_verts_lst[0].co, two_verts_lst[1].co)
+        return sort_dist
+
+    def execute(self, context):
+        props = context.scene.sloppy_props
+        bm = bmesh.from_edit_mesh(bpy.context.active_object.data)
+        max_dimension = max(bpy.context.object.dimensions)
+        
+        verts_to_do = []
+
+        for vert in bm.verts:
+            verts_to_do.append(vert)
+
+        # for i, tv in enumerate(verts_to_do):
+        #     progress_pct = 100*(i/len(verts_to_do))
+        #     progress_str = str(progress_pct) + '%'
+        #     print('Processing vertex', tv.index, 'of', len(verts_to_do), '-', progress_str, 'done.')
+        #     vits = 0
+        #     totvec = mathutils.Vector()
+        #     for ov in verts_to_do:
+        #         if ov != tv:
+        #            odott = -ov.normal.dot(-tv.normal)
+        #            if odott < -0.25:
+        #                 vits += 1
+        #                 midco = tv.co.lerp(ov.co, 0.5)
+        #                 totvec += midco
+        #     if vits >= 1:
+        #         totvec /= vits
+        #         bmesh.ops.create_vert(bm, co=totvec)
+
+        for i, tv in enumerate(verts_to_do):
+            progress_pct = 100*(i/len(verts_to_do))
+            progress_str = str(progress_pct) + '%'
+            print('Processing vertex', tv.index, 'of', len(verts_to_do), '-', progress_str, 'done.')
+            overts = [] 
+            for ov in verts_to_do:
+                if ov != tv:
+                    overts.append([tv, ov, max_dimension])
+            overts.sort(key=props.sort_verts_by_nearest_most_opposite)
+            midco = tv.co.lerp(overts[0][1].co, 0.5)
+            bmesh.ops.create_vert(bm, co=midco)
+
+        bpy.context.active_object.data.update()
+
+        new_verts = []
+        done_verts = []
+
+        for av in bm.verts:
+            if av not in verts_to_do:
+                new_verts.append(av)
+        
+        for nv in new_verts:
+            noverts = []
+            for nov in new_verts:
+                if nov != nv:
+                    if nov not in done_verts:
+                        noverts.append([nv, nov])
+            noverts.sort(key=self.fmp_dist_sort)
+            bmesh.ops.contextual_create(bm, geom=[noverts[0][0], noverts[0][1]])
+            done_verts.append(noverts[0][1])
+        
+        bpy.context.active_object.data.update()
+
+        return {"FINISHED"}
+
 #endregion
 
 
@@ -3299,6 +3387,7 @@ classes = [SloppyProperties,
            SloppyAlignViewToSelected,
            SloppyFindContiguousSeams,
            SloppyFindIslandBoundaries,
+           SloppyFindMidpoints,
            SloppyIslandBoundaryConnect,
            SloppyBasicUVUnfold,
            SloppyBoundaryFirstUVUnfold

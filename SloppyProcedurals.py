@@ -7,7 +7,6 @@ import mathutils
 import bl_math
 import sys
 
-# region QuadUVUnfold op.
 class SloppyQuadUVUnfold(bpy.types.Operator):
     bl_idname = "operator.sloppy_quad_unfold"
     bl_label = "Quad Unfold UVs"
@@ -1781,12 +1780,7 @@ class SloppyQuadUVUnfold(bpy.types.Operator):
             for loop in face.loops:
                 loop[uv_layer].pin_uv = False
         return {"FINISHED"}
-# endregion
 
-
-
-
-# region DeTri op.
 class SloppyDeTri(bpy.types.Operator):
     bl_idname = "operator.sloppy_detri"
     bl_label = "Detriangulate from Selected"
@@ -3539,12 +3533,7 @@ class SloppyDeTri(bpy.types.Operator):
             for loop in face.loops:
                 loop[uv_layer].pin_uv = False
         return {"FINISHED"}
-# endregion
 
-
-
-
-# region UVToMesh op.
 class SloppyUVToMesh(bpy.types.Operator):
     bl_idname = "operator.sloppy_uv_to_mesh"
     bl_label = "Sloppy UV to Mesh"
@@ -3629,12 +3618,7 @@ class SloppyUVToMesh(bpy.types.Operator):
         bpy.context.active_object.data.update()
 
         return {"FINISHED"}
-# endregion
 
-
-
-
-# region RedoUVEdgeLength op.
 class RedoUVEdgeLength(bpy.types.Operator):
     bl_idname = "operator.sloppy_rebuild_uv_edge_length"
     bl_label = "Rebuild UV Edge Length"
@@ -3792,12 +3776,7 @@ class RedoUVEdgeLength(bpy.types.Operator):
         bpy.context.active_object.data.update()
 
         return {"FINISHED"}
-# endregion
 
-
-
-
-# region BasicUVUnfold op.
 class SloppyBasicUVUnfold(bpy.types.Operator):
     bl_idname = "operator.sloppy_basic_uv_unfold"
     bl_label = "Basic UV Unfold"
@@ -4294,12 +4273,7 @@ class SloppyBasicUVUnfold(bpy.types.Operator):
 
 
         return {"FINISHED"}
-# endregion
 
-
-
-
-# region Bnd.1stUVUnf. op.
 class SloppyBoundaryFirstUVUnfold(bpy.types.Operator):
     bl_idname = "operator.sloppy_boundary_first_uv_unfold"
     bl_label = "Boundary First UV Unfold"
@@ -4888,4 +4862,3 @@ class SloppyBoundaryFirstUVUnfold(bpy.types.Operator):
 
 
         return {"FINISHED"}
-# endregion

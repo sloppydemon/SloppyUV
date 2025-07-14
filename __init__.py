@@ -162,6 +162,30 @@ class SloppyProperties(bpy.types.PropertyGroup):
         # return(pco_dot_vco + (pno_dot_vno * two_vert_lst[2]))
         return(pco_dot_vco)
     
+    def get_verts_filtered_loops_in_island_using_perp_edge(self, v, e, lf, isl):
+        out_loops = []
+        fs = [f for f in e.link_faces if f in isl]
+        fsls = []
+        for fsf in fs:
+            for fsfl in fsf.loops:
+                if fsfl in lf:
+                    fsls.append(fsfl)
+        for vl in v.link_loops:
+            if vl in fsls:
+                out_loops.append(vl)
+        return(out_loops)
+    
+    def generate_uv_loop_connection_map(self, input_loops, uv_layer):
+        connected_loops = []
+        for il in input_loops:
+            conls = []
+            for ill in input_loops:
+                ld = math.dist(il[uv_layer].uv, ill[uv_layer].uv)
+                if ld == 0.0:
+                    conls.append(ill)
+            connected_loops.append(conls)
+        return(connected_loops)
+    
     def find_contiguous_seams(self, bm, select_seams_by_index = False, select_index_start = 0, select_index_end = 0, sort_by_length = True, verbose = False):
         """ Returns lists (seams, face corners to the right, face corners to the left, boolean that is True if seam is open-ended (that is if one end does not end in a seam or boundary edge), boolean that is True if seam is isolated (that is if it never touches another seam)) of contiguous seams (which way is contiguous at crossroad seams will be decided according to which next seam is most well-aligned with the last) and two lists of face corners belonging on either side of the seam """
         seams = []
@@ -1112,9 +1136,6 @@ class SloppyProperties(bpy.types.PropertyGroup):
         return None
     # endregion
 
-
-
-
     # region Properties Def
     distsort_bottom_up : bP (
         name = "From Bottom Up",
@@ -1529,7 +1550,19 @@ class SloppyProperties(bpy.types.PropertyGroup):
         ) # type: ignore
     # endregion
 
-
+    # region Batch Render Properties
+    br_output_path : sP(
+        name = "Output Path",
+        description = "Base path to batch render to",
+        default = "",
+        subtype="DIR_PATH"
+        ) # type: ignore
+    
+    br_use_viewport : bP(
+        name="Viewport Render",
+        default=False
+        ) # type: ignore
+    #endregion
 
 
     # region ProcUV Properties
@@ -1593,9 +1626,6 @@ class SloppyProperties(bpy.types.PropertyGroup):
         ) # type: ignore
     #endregion
     # endregion
-
-
-
 
 #region Panel Classes
 class SloppyUVPanel(bpy.types.Panel):
@@ -1881,12 +1911,23 @@ class SloppyDebugPanel(bpy.types.Panel):
         props = context.scene.sloppy_props
         
         layout.prop(props, "verbose")
+
+class SloppyBRPanel(bpy.types.Panel):
+    bl_idname = "UV_PT_SloppyBRPanel"
+    bl_region_type = "UI"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "SloppyUV"
+    bl_label = "Batch Render"
+
+    def draw(self, context):
+        props = context.scene.sloppy_props
+        layout = self.layout
+        layout.prop(props, "br_output_path")
+        layout.prop(props, "br_use_viewport")
+        layout.operator("operator.sloppy_batch_render")
 # endregion
 
-
-
-
-#region Error Dialog
 class SloppyErrorDialog(bpy.types.Operator):
     bl_idname = "operator.sloppy_dialog"
     bl_label = "Error!"
@@ -1913,12 +1954,7 @@ class SloppyErrorDialog(bpy.types.Operator):
         box_err = layout.box()
         box_err.label(text = msg_heading)
         box_err.label(text = msg)
-#endregion
 
-
-
-
-#region CalcScale class
 # Scaling section very unfinished
 class SloppyCalcScale(bpy.types.Operator):
     bl_idname = "operator.sloppy_scale_calc"
@@ -2062,12 +2098,7 @@ class SloppyCalcScale(bpy.types.Operator):
         props.update_scalings(context)
         
         return {"FINISHED"}
-#endregion
 
-
-
-
-#region ApplyScale class
 class SloppyApplyScale(bpy.types.Operator):
     bl_idname = "operator.sloppy_scale_apply"
     bl_label = "Apply"
@@ -2170,12 +2201,7 @@ class SloppyApplyScale(bpy.types.Operator):
         props.update_scalings(context)
         
         return {"FINISHED"}
-#endregion
 
-
-
-
-#region AlignUVs setprop classes
 class SloppyAlignUVsGeo(bpy.types.Operator):
     bl_idname = "operator.sloppy_align_uvs_geo"
     bl_label = "3D View"
@@ -2201,12 +2227,7 @@ class SloppyAlignUVsUV(bpy.types.Operator):
         bpy.ops.operator.sloppy_align_uvs()
         
         return {"FINISHED"}
-#endregion
 
-
-
-
-#region AlignUVs main class
 class SloppyAlignUVs(bpy.types.Operator):
     bl_idname = "operator.sloppy_align_uvs"
     bl_label = "Align UVs"
@@ -2419,12 +2440,410 @@ class SloppyAlignUVs(bpy.types.Operator):
             print("UV Alignment complete!\n")
         
         return {"FINISHED"}
-#endregion
+
+class SloppyUVSmartAlign(bpy.types.Operator):
+    bl_idname = "operator.sloppy_uv_smart_align"
+    bl_label = "Smart Align UVs"
+    bl_description = "Align line of UV edges to axis and auto-unwrap result"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    # region UVSmartAlign Properties
+    iP = bpy.props.IntProperty
+    fP = bpy.props.FloatProperty
+    fvP = bpy.props.FloatVectorProperty
+    bP = bpy.props.BoolProperty
+    eP = bpy.props.EnumProperty
+    bvP = bpy.props.BoolVectorProperty
+    sP = bpy.props.StringProperty
+
+    align_axis : eP(
+        name = "Axis",
+        description = "Axis to align UVs with",
+        items = [
+            ("A", "Average", "Align with average axis of selection"),
+            ("B", "Endpoints", "Align with vector between endpoints of selection"),
+            ("C", "U", "Align selected UVs with U/X"),
+            ("D", "V", "Align selected UVs with V/Y")
+            ],
+        default="A"
+        ) # type: ignore
+
+    align_pivot : eP(
+        name = "Pivot",
+        description = "Pivot to align UVs with (note that any intersecting pinned UVs will override this)",
+        items = [
+            ("A", "Middle", "Middle of length is used as pivot"),
+            ("B", "Endpoints", "Midpoint between endpoints is used as pivot"),
+            ("C", "Endpoint A", "Endpoint A is used as pivot"),
+            ("D", "Endpoint B", "Endpoint B is used as pivot")
+            ],
+        default="A"
+        ) # type: ignore
+
+    unwrap_mode : eP(
+        name = "Auto-Unwrap Mode",
+        description = "",
+        items = [
+            ("A", "Angle-Based", ""),
+            ("B", "Conformal", "")
+            ],
+        default="A"
+        ) # type: ignore
+
+    keep_pins : bP(
+        name = "Keep Pins",
+        description = "Keep UV pins",
+        default = True
+        ) # type: ignore
+
+    respect_pins : bP(
+        name = "Respect Pins",
+        description = "Respect existing pins",
+        default = True
+        ) # type: ignore
+    #endregion
 
 
+    def execute(self, context):
+        props = context.scene.sloppy_props
+        bms = []
+        for ed_ob in bpy.context.objects_in_mode:
+            nbm = bmesh.from_edit_mesh(ed_ob.data)
+            bms.append(nbm)
+        
+        for bm in bms:
+            uv_layer = bm.loops.layers.uv.verify()
+            islands = bmesh_utils.bmesh_linked_uv_islands(bm, uv_layer)
+            
+            # initialize console commands
+            CURSOR_UP = '\033[F'
+            ERASE_LINE = '\033[K'
+            
+            def sort_isu_map(e):
+                return e[0]
+            
+            def sort_by_u(e):
+                return e[2].x
+            
+            def sort_by_v(e):
+                return e[2].y
+
+            if props.verbose == True:
+                print("\nUV Alignment started.\n")
+                print("Step 1: Collect pertinent edges and loops")
+                print("=========================================")
+
+            island_loop_map = []
+            selected_edges = []
+            selected_uvs = []
+            pinned_uvs = []
+            
+            for island in islands:
+                island_loops = []
+                island_selected_edges = []
+                island_selected_uvs = []
+                island_pinned_uvs = []
+                for i_f in island:
+                    for il in i_f.loops:
+                        if il not in island_loops:
+                            island_loops.append(il)
+                            if il[uv_layer].select == True:
+                                if il not in island_selected_uvs:
+                                    island_selected_uvs.append(il)
+                                if il[uv_layer].select_edge == True:
+                                    if il.edge not in island_selected_edges:
+                                        island_selected_edges.append(il.edge)
+                            if il[uv_layer].pin_uv == True:
+                                if il not in island_pinned_uvs:
+                                    island_pinned_uvs.append(il)
+                island_loop_map.append(island_loops)
+                selected_edges.append(island_selected_edges)
+                selected_uvs.append(island_selected_uvs)
+                pinned_uvs.append(island_pinned_uvs)
+            
+            ii = 0
+            for ilm, ise, isu, ipu, isls in zip(island_loop_map, selected_edges, selected_uvs, pinned_uvs, islands):
+                
+                abort_island = False
+                
+                if len(isu) < 1:
+                    abort_island = True
+
+                if abort_island == False:
+                    print("Island", ii, "- selected UV edges:", len(ise))
+                    uvlcm = props.generate_uv_loop_connection_map(isu, uv_layer)
+
+                    pin_intersect = None
+                    for su in isu:
+                        if su in ipu:
+                            if pin_intersect:
+                                if pin_intersect[-1][uv_layer].uv != su[uv_layer].uv:
+                                    pin_intersect.append(su)
+                            else:
+                                pin_intersect = [su]
+                    
+                    length_relation = 0.0
+                    uv_length = 0.0
+                    uv_length_mid = 0.0
+                    geo_length = 0.0
+                    uv_pivot = None
+                    uv_pivot_offset = mathutils.Vector((0,0))
+                    too_many_intersections = False
+                    if pin_intersect:
+                        print("Number of pinned intersections:", len(pin_intersect))
+                        if self.respect_pins == True:
+                            if len(pin_intersect) > 1:
+                                uvlerpa = pin_intersect[0][uv_layer].uv
+                                uvlerpb = pin_intersect[1][uv_layer].uv
+                                uv_pivot = uvlerpa.lerp(uvlerpb, 0.5)
+                                if len(pin_intersect) > 2:
+                                    too_many_intersections = True
+                            else:
+                                if len(pin_intersect) == 1:
+                                    uv_pivot = pin_intersect[0][uv_layer].uv
+                    
+                        if too_many_intersections == True:
+                            if props.verbose:
+                                print("Too many pin intersections (", len(pin_intersect), ")! Island", ii, "marked for abort...")
+                            abort_island = True
+                    
+                    if abort_island == False:
+                        for se in ise:
+                            geo_length += se.calc_length()
+                            lenuvs = [None, None]
+                            for sevi, sev in enumerate(se.verts):
+                                for sevl in sev.link_loops:
+                                    if sevl in isu:
+                                        if not lenuvs[sevi]:
+                                            lenuvs[sevi] = sevl[uv_layer].uv
+                            uv_length += math.dist(lenuvs[0], lenuvs[1])
 
 
-#region PeltUVs class
+                        length_relation = uv_length/geo_length
+                        print("Length relationship:", length_relation)
+                        uv_length_mid = uv_length / 2
+
+                    isu_map = []
+                    found_ends = 2
+                    loops_todo = isu.copy()
+                    edges_todo = ise.copy()
+                    next_vdns = []
+                    first_loop = loops_todo[0]
+                    first_vert = first_loop.vert
+                    
+                    next_edges = []
+                    for lve in loops_todo[0].vert.link_edges:
+                        if lve in edges_todo:
+                            next_edges.append(lve)
+                            edges_todo.remove(lve)
+                            found_ends -= 1
+
+                    if len(next_edges) > 2:
+                        print("Intersecting selection! Island", ii, "marked for abort...")
+                        abort_island = True
+
+                    for ni, ne in enumerate(next_edges):
+                        current_dir = (0 + 1) - (ni * 2)
+                        ov = ne.other_vert(first_vert)
+                        arrival_loops = props.get_verts_filtered_loops_in_island_using_perp_edge(ov, ne, isu, isls)
+                        next_vdns.append([ov, current_dir, current_dir, arrival_loops, ne.calc_length() * current_dir])
+                    
+                    isu_index = isu.index(first_loop)
+
+                    isu_map.append([0, uvlcm[isu_index].copy(), first_loop[uv_layer].uv, 0.0])
+
+                    for uvl in uvlcm[isu_index]:
+                        loops_todo.remove(uvl)
+
+                    while len(edges_todo) > 0:
+                        these_vdns = next_vdns.copy()
+                        next_vdns = []
+                        for vdn in these_vdns:
+                            tvedges = []
+                            tv = vdn[0]
+                            td = vdn[1]
+                            tn = vdn[2]
+                            al = vdn[3][0]
+                            glen = vdn[4]
+
+                            isu_index = isu.index(al)
+                            isu_map.append([tn, uvlcm[isu_index].copy(), al[uv_layer].uv, glen])
+
+                            for tve in tv.link_edges:
+                                if tve in edges_todo:
+                                    tvedges.append(tve)
+                                    edges_todo.remove(tve)
+                            
+                            if len(tvedges) > 1:
+                                print("Intersecting selection! Island", ii, "marked for abort...")
+                                abort_island = True
+                            
+                            for tvi, tve in enumerate(tvedges):
+                                tvov = tve.other_vert(tv)
+                                tval = props.get_verts_filtered_loops_in_island_using_perp_edge(tvov, tve, isu, isls)
+                                next_vdns.append([tvov, td, tn + td, tval, glen + (tve.calc_length() * td)])
+
+                            if len(tvedges) == 0:
+                                found_ends += 1
+                        
+                        # if found_ends >= 2:
+                        #     break
+
+                    isu_map.sort(key=sort_isu_map)
+
+                    for isui in isu_map:
+                        print(isui[0], "- loops:", [iu.index for iu in isui[1]], "- U:", isui[2].x, "V:", isui[2].y, "- Distance from 0:", isui[3])
+
+                    axis_vec = mathutils.Vector((0,0))
+                    avg_axis_vec = mathutils.Vector((0,0))
+                    curr_uv_length = 0.0
+                    next_uv_length = 0.0
+                    curr_guv_length = 0.0
+                    next_guv_length = 0.0
+                    next_guv_part = 0.0
+
+                    isu_guv_parts = [0.0]
+
+                    midpoint_element_lerp = None
+                    pivot_element_lerp = None
+                    pivot_offset_dist = 0.0
+                    mid_guv_length = 0.0
+                    mid_guv_part = 0.0
+                    part_offset = 0.0
+                    
+                    if uv_pivot:
+                        for ppvi in range(len(isu_map)-1):
+                            vec = isu_map[ppvi][2]
+                            nexvec = isu_map[ppvi+1][2]
+                            if uv_pivot == vec:
+                                pivot_element_lerp = [isu_map[ppvi][0], isu_map[ppvi+1][0], 0.0, uv_pivot]
+                            elif uv_pivot == nexvec:
+                                pivot_element_lerp = [isu_map[ppvi][0], isu_map[ppvi+1][0], 1.0, uv_pivot]
+                            else:
+                                pvec = uv_pivot - vec
+                                pnvec = uv_pivot - nexvec
+                                pdir = pvec.normalized()
+                                pndir = pnvec.normalized()
+                                pdotn = pdir.dot(pndir)
+                                if pdotn < 0:
+                                    povershot_distance = math.dist(vec, uv_pivot)
+                                    puv_section_length = math.dist(vec, nexvec)
+                                    plerp_alpha = povershot_distance / puv_section_length
+                                    pivot_element_lerp = [isu_map[ppvi][0], isu_map[ppvi+1][0], plerp_alpha, uv_pivot]
+
+                    for pvi in range(len(isu_map)-1):
+                        curr_uv_length = next_uv_length
+                        curr_guv_length = next_guv_length
+                        curr_guv_part = next_guv_part
+                        vec = isu_map[pvi][2]
+                        nexvec = isu_map[pvi+1][2]
+                        uv_section_length = math.dist(vec, nexvec)
+                        guv_section_length = isu_map[pvi+1][3] - isu_map[pvi][3]
+                        next_uv_length = curr_uv_length + uv_section_length
+                        next_guv_length =  curr_guv_length + guv_section_length
+                        next_guv_part = next_guv_length / geo_length
+                        isu_guv_parts.append(next_guv_part)
+                        avg_axis_vec += nexvec - vec
+
+                        if uv_length_mid > curr_uv_length and uv_length_mid < next_uv_length:
+                            overshot_distance = uv_length_mid - curr_uv_length
+                            lerp_alpha = overshot_distance / uv_section_length
+                            lerped_pos = vec.lerp(nexvec, lerp_alpha)
+                            mid_guv_length = bl_math.lerp(curr_guv_length, next_guv_length, lerp_alpha)
+                            mid_guv_part = mid_guv_length / uv_length
+                            midpoint_element_lerp = [isu_map[pvi][0], isu_map[pvi+1][0], lerp_alpha, lerped_pos]
+                    
+                    if self.align_axis == "A":
+                        axis_vec = avg_axis_vec.normalized()
+                    if self.align_axis == "B":
+                        vec = isu_map[0][2]
+                        lastvec = isu_map[-1][2]
+                        endpoints_axis_vec = lastvec - vec
+                        axis_vec = endpoints_axis_vec.normalized()
+                    if self.align_axis == "C":
+                        xa = isu_map[0][2].x
+                        xb = isu_map[-1][2].x
+                        axis_vec = mathutils.Vector((1,0))
+                        if xa > xb:
+                            axis_vec *= -1
+                    if self.align_axis == "D":
+                        ya = isu_map[0][2].y
+                        yb = isu_map[-1][2].y
+                        axis_vec = mathutils.Vector((0,1))
+                        if ya > yb:
+                            axis_vec *= -1
+                    
+                    if pivot_element_lerp:
+                        # uv_pivot_offset = uv_pivot - midpoint_element_lerp[3]
+                        parta = isu_guv_parts[pivot_element_lerp[0]]
+                        partb = isu_guv_parts[pivot_element_lerp[1]]
+                        parts_lerped = bl_math.lerp(parta, partb, pivot_element_lerp[2])
+                        print("\nPart lerped:", parts_lerped)
+                        # mid_guv_part = 0.5
+                        # part_offset = -(1.0 - parts_lerped) + (mid_guv_part - 0.5)
+                        # part_offset = -(1.0 - parts_lerped) - (0.5 - mid_guv_part)
+                        if parts_lerped > mid_guv_part:
+                            part_offset = -(1.0 - parts_lerped)
+                        else:
+                            mulfac = max(mid_guv_part, parts_lerped) - min(mid_guv_part, parts_lerped)
+                            part_offset = -parts_lerped*mulfac
+                            # pass
+                        # part_offset = -parts_lerped
+                        uv_pivot_offset = mathutils.Vector((0,0))
+                    else:
+                        if self.align_pivot == "A":
+                            uv_pivot = midpoint_element_lerp[3]
+                            uv_pivot_offset = mathutils.Vector((0,0))
+                        if self.align_pivot == "B":
+                            vec = isu_map[0][2]
+                            nexvec = isu_map[-1][2]
+                            vmid = vec.lerp(nexvec, 0.5)
+                            uv_pivot = vmid
+                            uv_pivot_offset = mathutils.Vector((0,0))
+                        if self.align_pivot == "C":
+                            vec = isu_map[0][2]
+                            nexvec = isu_map[-1][2]
+                            vmid = vec.lerp(nexvec, 0.5)
+                            uv_pivot = vec
+                            part_offset = -mid_guv_part
+                            uv_pivot_offset = mathutils.Vector((0,0))
+                        if self.align_pivot == "D":
+                            vec = isu_map[0][2]
+                            nexvec = isu_map[-1][2]
+                            vmid = vec.lerp(nexvec, 0.5)
+                            uv_pivot = nexvec
+                            part_offset = mid_guv_part
+                            uv_pivot_offset = mathutils.Vector((0,0))
+
+                    print("Current mid geo-UV part:", mid_guv_part, "- Current part offset:", part_offset, "- Sum of part modification:", -(mid_guv_part-part_offset))
+
+                    for isum, isump in zip(isu_map, isu_guv_parts):
+                        nupart = isump - mid_guv_part - part_offset
+                        new_uv = uv_pivot + uv_pivot_offset + (axis_vec * nupart * uv_length)
+                        print("New UVs for element", isum[0], "(at", isump, "/", nupart, "of length): U:", new_uv.x, "V:", new_uv.y)
+                        for isul in isum[1]:
+                            isul[uv_layer].uv = new_uv
+                            isul[uv_layer].pin_uv = True
+                    
+
+                if abort_island == False:
+                    pass
+                else:
+                    pass
+
+                ii += 1
+
+        for ed_ob in bpy.context.objects_in_mode:
+            ed_ob.data.update()
+        
+        uvw_method = 'ANGLE_BASED'
+        if self.unwrap_mode == "B":
+            uvw_method = 'CONFORMAL'
+        
+        bpy.ops.uv.unwrap(method=uvw_method, fill_holes=True, correct_aspect=True, use_subsurf_data=False, margin=0, no_flip=False, iterations=10, use_weights=False, weight_group="uv_importance", weight_factor=1)
+
+        return {"FINISHED"}
+
 class PeltUVs(bpy.types.Operator):
     bl_idname = "operator.pelt_uvs"
     bl_label = "Generate Pelt"
@@ -2828,12 +3247,7 @@ class PeltUVs(bpy.types.Operator):
             print("Pelt Generation complete!\n")
         
         return {"FINISHED"}
-#endregion
 
-
-
-
-#region SelectByIndex class
 class SloppySelectByIndex(bpy.types.Operator):
     bl_idname = "operator.select_by_index"
     bl_label = "Select By Index"
@@ -2909,12 +3323,7 @@ class SloppySelectByIndex(bpy.types.Operator):
         props.select_by_index_bm(domain, self.choose_domain, self.uvs, self.i_start, self.i_end, self.sel_range, self.extend, False, in_bm)
         
         return {"FINISHED"}
-#endregion
 
-
-
-
-#region ShiftSelectByIndex class
 class SloppyShiftSelectByIndex(bpy.types.Operator):
     bl_idname = "operator.shift_select_by_index"
     bl_label = "Shift Selection By Index"
@@ -2988,12 +3397,7 @@ class SloppyShiftSelectByIndex(bpy.types.Operator):
         props.shift_select_by_index_bm(domain, self.choose_domain, self.shift_amount, self.shift_by_len, self.shift_by_len_neg, self.extend, self.both_directions, False, in_bm)
         
         return {"FINISHED"}
-#endregion
 
-
-
-
-#region FindCont.Seams class
 class SloppyFindContiguousSeams(bpy.types.Operator):
     bl_idname = "operator.find_contiguous_seams"
     bl_label = "Find Contiguous Seams"
@@ -3098,12 +3502,7 @@ class SloppyFindContiguousSeams(bpy.types.Operator):
             bpy.context.active_object.data.update()
 
         return {"FINISHED"}
-#endregion
 
-
-
-
-#region FindIsl.Bound. class
 class SloppyFindIslandBoundaries(bpy.types.Operator):
     bl_idname = "operator.find_island_boundaries"
     bl_label = "Find Island Boundaries"
@@ -3196,12 +3595,7 @@ class SloppyFindIslandBoundaries(bpy.types.Operator):
         bpy.context.active_object.data.update()
 
         return {"FINISHED"}
-#endregion
 
-
-
-
-#region AlignViewToSel class
 class SloppyAlignViewToSelected(bpy.types.Operator):
     bl_idname = "operator.align_view_to_selection"
     bl_label = "Align View to Selected"
@@ -3350,10 +3744,60 @@ class SloppyFindMidpoints(bpy.types.Operator):
 
         return {"FINISHED"}
 
-#endregion
+class SloppyBatchRender(bpy.types.Operator):
+    bl_idname = "operator.sloppy_batch_render"
+    bl_label = "Batch Render"
+    bl_description = ""
+    bl_options = {'REGISTER', 'UNDO'}
 
+    def execute(self, context):
+        props = context.scene.sloppy_props
 
+        prev_render_path = bpy.context.scene.render.filepath
 
+        viewport_render = props.br_use_viewport
+        
+        coll_parent = bpy.context.collection
+        name_parent = coll_parent.name
+        lyrcoll_parent = bpy.context.scene.view_layers['ViewLayer'].layer_collection.children[name_parent]
+
+        for sub_coll in coll_parent.children:
+            print(sub_coll.name)
+            if 'Collection' in str(sub_coll):
+                name_sub = sub_coll.name
+                lyrcoll_sub = None
+                for lc in lyrcoll_parent.children:
+                    if lc.name == name_sub:
+                        lc.exclude = False
+                        lyrcoll_sub = lc
+                        print('Subcollection:', lc.name)
+                    else:
+                        lc.exclude = True
+                for model_coll in sub_coll.children:
+                    if 'Collection' in str(model_coll):
+                        name_model = model_coll.name
+                        print('Subcollection:', name_sub + ' > ' + 'Model:', name_model)
+                        lyrcoll_model = None
+                        for lcm in lyrcoll_sub.children:
+                            if lcm.name == name_model:
+                                lcm.exclude = False
+                                lyrcoll_model = lcm
+                            else:
+                                lcm.exclude = True
+                        render_path = props.br_output_path + '\\' + sub_coll.name + '\\' + model_coll.name + '_'
+                        if viewport_render == True:
+                            render_path = props.br_output_path + '\\' + sub_coll.name + '\\' + model_coll.name + '_VP_'
+                        bpy.context.scene.render.filepath = render_path
+                        if viewport_render == True:
+                            bpy.ops.render.opengl(animation=True)
+                        else:
+                            bpy.ops.render.render(animation=True, use_viewport=True)
+                        
+            
+        print('\nAll renders done!')
+        bpy.context.scene.render.filepath = prev_render_path
+
+        return {"FINISHED"}
 
 #region Initialization
 classes = [SloppyProperties,
@@ -3390,7 +3834,10 @@ classes = [SloppyProperties,
            SloppyFindMidpoints,
            SloppyIslandBoundaryConnect,
            SloppyBasicUVUnfold,
-           SloppyBoundaryFirstUVUnfold
+           SloppyBoundaryFirstUVUnfold,
+           SloppyUVSmartAlign,
+           SloppyBatchRender,
+           SloppyBRPanel
            ]
 
 def register():

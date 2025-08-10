@@ -7,6 +7,7 @@ import math
 import mathutils
 import bl_math
 import sys
+import subprocess
 
 bl_info = {
     "name": "SloppyUV",
@@ -19,19 +20,10 @@ bl_info = {
     "category": "User Interface",
 }
 
-from SloppyUV.SloppySeamGeneration import SloppySeamGen # type: ignore
-from SloppyUV.SloppySeamGeneration import SloppySeamGenVis # type: ignore
-from SloppyUV.SloppySeamGeneration import SloppyIslandBoundaryConnect # type: ignore
-from SloppyUV.SloppySortIndexByDist import SortVertByDist # type: ignore
-from SloppyUV.SloppySortIndexByDist import SortEdgeByDist # type: ignore
-from SloppyUV.SloppySortIndexByDist import SortFaceByDist # type: ignore
-from SloppyUV.SloppyBakeProcAttr import SloppyProcAttrBake # type: ignore
-from SloppyUV.SloppyBakeProcAttr import SloppyBlurAttribute # type: ignore
-from SloppyUV.SloppyProcedurals import SloppyQuadUVUnfold # type: ignore
-from SloppyUV.SloppyProcedurals import SloppyUVToMesh # type: ignore
-from SloppyUV.SloppyProcedurals import RedoUVEdgeLength # type: ignore
-from SloppyUV.SloppyProcedurals import SloppyBasicUVUnfold # type: ignore
-from SloppyUV.SloppyProcedurals import SloppyBoundaryFirstUVUnfold # type: ignore
+from SloppyUV.SloppySeamGeneration import SloppySeamGen, SloppySeamGenVis, SloppyIslandBoundaryConnect # type: ignore
+from SloppyUV.SloppySortIndexByDist import SortVertByDist, SortEdgeByDist, SortFaceByDist # type: ignore
+from SloppyUV.SloppyBakeProcAttr import SloppyProcAttrBake, SloppyBlurAttribute # type: ignore
+from SloppyUV.SloppyProcedurals import SloppyQuadUVUnfold, SloppyUVToMesh, RedoUVEdgeLength, SloppyBasicUVUnfold,  SloppyBoundaryFirstUVUnfold # type: ignore
 
 
 class SloppyProperties(bpy.types.PropertyGroup):
@@ -854,6 +846,31 @@ class SloppyProperties(bpy.types.PropertyGroup):
             avg_nor = add_nor.normalized()
             return(avg_nor)
     
+    def calc_selected_edges_total_length(self):
+        totlen = 0
+        for obj in bpy.context.objects_in_mode:
+            for edge in obj.edges:
+                if edge.select == True:
+                    parent_mesh = edge.id_data
+                    v1 = parent_mesh.vertices[edge.vertices[0]]
+                    v2 = parent_mesh.vertices[edge.vertices[1]]
+                    totlen += math.dist(v1.co, v2.co)
+        return(totlen)
+    
+    def calc_total_and_selected_surface_area(self, objects):
+        total_area = 0
+        selected_area = 0
+        for obj in objects:
+            for pol in obj.data.polygons:
+                total_area += pol.area
+                if pol.select == True:
+                    selected_area += pol.area
+        return total_area, selected_area
+    
+    def copy_float_to_clipboard(self, val_to_copy):
+        cmd=f'echo {val_to_copy}|clip'
+        return subprocess.check_call(cmd, shell=True)
+    
     def remap_val(self, val, in_min, in_max, out_min, out_max):
         in_interval = in_max - in_min
         out_interval = out_max - out_min
@@ -1467,6 +1484,16 @@ class SloppyProperties(bpy.types.PropertyGroup):
         default = "Unknonwn error occured.",
         ) # type: ignore
     
+    delta_rotation_mode: eP(
+        name = "Delta Rotation Mode",
+        description = "",
+        items = [
+            ("A", "Euler", ""),
+            ("B", "Quaternion", "")
+            ],
+        default="A"
+        ) # type: ignore
+
     current_sort_axis : sP(
         name = "Current Sort Axis",
         default = "",
@@ -1561,6 +1588,72 @@ class SloppyProperties(bpy.types.PropertyGroup):
     br_use_viewport : bP(
         name="Viewport Render",
         default=False
+        ) # type: ignore
+    #endregion
+
+    # region CopyPaste Properties
+    cpt_location : fvP(
+        name = "Location",
+        description = "",
+        default = (0,0,0),
+        subtype='XYZ_LENGTH',
+        precision=10
+        ) # type: ignore
+    
+    cpt_rotation : fvP(
+        name = "Rotation",
+        description = "",
+        default = (1,0,0,0),
+        subtype='QUATERNION',
+        size=4,
+        precision=10
+        ) # type: ignore
+    
+    cpt_scale : fvP(
+        name = "Scale",
+        description = "",
+        default = (1,1,1),
+        subtype='XYZ',
+        precision=10
+        ) # type: ignore
+    
+    cpt_dimensions : fvP(
+        name = "Dimensions",
+        description = "",
+        default = (0,0,0),
+        subtype='XYZ_LENGTH',
+        precision=10
+        ) # type: ignore
+    
+    cpt_spline_length : fP(
+        name = "Clipboard Spline Length",
+        description = "",
+        default = 0
+        ) # type: ignore
+    
+    cpt_median : fvP(
+        name = "Clipboard Median",
+        description = "",
+        default = (0,0,0),
+        subtype='XYZ'
+        ) # type: ignore
+    
+    ep_total_area : fP(
+        name = "Total Surface Area",
+        description = "",
+        default = 0
+        ) # type: ignore
+    
+    ep_selected_area : fP(
+        name = "Selected Surface Area",
+        description = "",
+        default = 0
+        ) # type: ignore
+    
+    ep_total_selected_edge_length : fP(
+        name = "Selected Edges Length",
+        description = "",
+        default = 0
         ) # type: ignore
     #endregion
 
@@ -1914,7 +2007,6 @@ class SloppyDebugPanel(bpy.types.Panel):
 
 class SloppyBRPanel(bpy.types.Panel):
     bl_idname = "UV_PT_SloppyBRPanel"
-    bl_region_type = "UI"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "SloppyUV"
@@ -1926,6 +2018,136 @@ class SloppyBRPanel(bpy.types.Panel):
         layout.prop(props, "br_output_path")
         layout.prop(props, "br_use_viewport")
         layout.operator("operator.sloppy_batch_render")
+
+class SloppyExtraObjPropsPanel(bpy.types.Panel):
+    bl_idname = "UV_PT_SloppyExtraObjPropsPanel"
+    bl_label = "Extra Properties"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Item"
+    
+    def draw(self, context):
+        props = context.scene.sloppy_props
+        layout = self.layout
+        context = bpy.context
+        obj = context.object
+        parent = obj.parent
+        row = layout.column(align=True)
+        row.scale_y = 0.8
+
+        if parent:
+            row.label(text="Parent Inverse Location:")
+            row.prop(obj, "matrix_parent_inverse", text="X", index=12)
+            row.prop(obj, "matrix_parent_inverse", text="Y", index=13)
+            row.prop(obj, "matrix_parent_inverse", text="Z", index=14)
+            row.separator()
+            row.label(text="World Location:")
+            row.prop(obj, "matrix_world", text="X", index=12)
+            row.prop(obj, "matrix_world", text="Y", index=13)
+            row.prop(obj, "matrix_world", text="Z", index=14)
+            row.separator()
+        
+        if obj.mode == "OBJECT":
+            copy_grid = row.grid_flow(columns=2)
+
+            copy_grid.operator("operator.sloppy_copy_location")
+            copy_grid.operator("operator.sloppy_copy_rotation")
+            copy_grid.operator("operator.sloppy_copy_scale")
+            copy_grid.operator("operator.sloppy_copy_dimensions")
+
+            row.separator()
+            row.operator("operator.sloppy_copy_transform")
+            row.separator()
+
+            paste_grid = row.grid_flow(columns=2)
+
+            paste_grid.operator("operator.sloppy_paste_location")
+            paste_grid.operator("operator.sloppy_paste_rotation")
+            paste_grid.operator("operator.sloppy_paste_scale")
+            paste_grid.operator("operator.sloppy_paste_dimensions")
+            row.separator()
+            row.operator("operator.sloppy_paste_transform")
+            row.separator()
+
+            if props.delta_rotation_mode == "A":
+                row.prop(obj, "delta_rotation_euler", text="Delta Rotation")
+            else:
+                row.prop(obj, "delta_rotation_quaternion", text="Delta Rotation")
+            row.prop(props, "delta_rotation_mode", text="")
+
+        if obj.type == "CURVE":
+            total_curve_length = 0
+            row.separator()
+            row.label(text="Spline Lengths:")
+            roro = row.row(align=True)
+            rororo = roro.column(align=True)
+            roroco = roro.column(align=True)
+            roroop = roro.column(align=False)
+            for spli, spl in enumerate(obj.data.splines):
+                this_length = spl.calc_length()
+                total_curve_length += this_length
+                rororo.label(text=f"Spline {spli}:")
+                roroco.label(text=f"{this_length:.3f}")
+                this_op_props = roroop.operator("operator.sloppy_copy_to_clipboard")
+                this_op_props.copied_value = this_length
+            rororo.label(text=f"Total:")
+            roroco.label(text=f"{total_curve_length:.3f}")
+            tot_op_props = roroop.operator("operator.sloppy_copy_to_clipboard")
+            tot_op_props.copied_value = total_curve_length
+
+        if obj.mode == "EDIT":
+            total_area = 0
+            selected_area = 0
+            total_edge_length = 0
+            rowr = row.row(align=True)
+            rowrow = rowr.column(align=True)
+            rowcow = rowr.column(align=True)
+            rowops = rowr.column(align=True)
+            for ob in bpy.context.objects_in_mode:
+                ob.update_from_editmode()
+                for pol in ob.data.polygons:
+                    total_area += pol.area
+                    if pol.select == True:
+                        selected_area += pol.area
+                for e in ob.data.edges:
+                    if e.select == True:
+                        v1 = e.id_data.vertices[e.vertices[0]]
+                        v2 = e.id_data.vertices[e.vertices[1]]
+                        total_edge_length += math.dist(v1.co, v2.co)
+            
+            rowrow.label(text=f"Total Area:")
+            rowcow.label(text=f"{total_area:.3f}")
+            totar_props = rowops.operator("operator.sloppy_copy_to_clipboard")
+            totar_props.copied_value = total_area
+            
+            rowrow.label(text=f"Selected Area:")
+            rowcow.label(text=f"{selected_area:.3f}")
+            selar_props = rowops.operator("operator.sloppy_copy_to_clipboard")
+            selar_props.copied_value = selected_area
+            
+            rowrow.label(text=f"Selected Edges Length:")
+            rowcow.label(text=f"{total_edge_length:.3f}")
+            totel_props = rowops.operator("operator.sloppy_copy_to_clipboard")
+            totel_props.copied_value = total_edge_length
+
+class SloppyCPTPanel(bpy.types.Panel):
+    bl_idname = "UV_PT_SloppyCPTPanel"
+    bl_parent_id = "UV_PT_SloppyExtraObjPropsPanel"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Item"
+    bl_label = "Copied Transform"
+
+    def draw(self, context):
+        props = context.scene.sloppy_props
+        layout = self.layout
+        row = layout.column(align=True)
+        row.prop(props, "cpt_location")
+        row.prop(props, "cpt_rotation")
+        row.prop(props, "cpt_scale")
+        row.prop(props, "cpt_dimensions")
+
+
 # endregion
 
 class SloppyErrorDialog(bpy.types.Operator):
@@ -3799,6 +4021,223 @@ class SloppyBatchRender(bpy.types.Operator):
 
         return {"FINISHED"}
 
+class SloppyCopyFloatToClipboard(bpy.types.Operator):
+    bl_idname = "operator.sloppy_copy_to_clipboard"
+    bl_label = "Copy Value"
+    bl_description = ""
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    fP = bpy.props.FloatProperty
+
+    copied_value : fP(
+        name="Copied Value",
+        precision=10
+        ) # type: ignore
+
+    def execute(self, context):
+        props = context.scene.sloppy_props
+
+        props.copy_float_to_clipboard(self.copied_value)
+
+        return {"FINISHED"}
+
+class SloppyCopyLocation(bpy.types.Operator):
+    bl_idname = "operator.sloppy_copy_location"
+    bl_label = "Copy Location"
+    bl_description = ""
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        props = context.scene.sloppy_props
+
+        props.cpt_location = bpy.context.object.location
+        print(props.cpt_location)
+
+        return {"FINISHED"}
+
+class SloppyCopyRotation(bpy.types.Operator):
+    bl_idname = "operator.sloppy_copy_rotation"
+    bl_label = "Copy Rotation"
+    bl_description = ""
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        props = context.scene.sloppy_props
+
+        if bpy.context.object.rotation_mode == 'QUATERNION':
+            quat = bpy.context.object.rotation_quaternion
+            props.cpt_rotation = mathutils.Vector((quat[0], quat[1], quat[2], quat[3]))
+            print(quat)
+        elif bpy.context.object.rotation_mode == 'AXIS_ANGLE':
+            axisangle = bpy.context.object.rotation_axis_angle
+            rot = mathutils.Matrix.Rotation(axisangle[0], 4, (axisangle[1], axisangle[2], axisangle[3]))
+            quat = rot.to_quaternion()
+            props.cpt_rotation = mathutils.Vector((quat[0], quat[1], quat[2], quat[3]))
+            print('Axis: X:', axisangle[1], ', Y:', axisangle[2], ', Z:', axisangle[3], '| Angle:', math.degrees(axisangle[0]),'->', quat)
+        else:
+            quat = bpy.context.object.rotation_euler.to_quaternion()
+            props.cpt_rotation = mathutils.Vector((quat[0], quat[1], quat[2], quat[3]))
+            print(bpy.context.object.rotation_euler, '->', quat)
+
+        return {"FINISHED"}
+
+class SloppyCopyScale(bpy.types.Operator):
+    bl_idname = "operator.sloppy_copy_scale"
+    bl_label = "Copy Scale"
+    bl_description = ""
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        props = context.scene.sloppy_props
+
+        props.cpt_scale = bpy.context.object.scale
+        print(props.cpt_scale)
+
+        return {"FINISHED"}
+
+class SloppyCopyDimensions(bpy.types.Operator):
+    bl_idname = "operator.sloppy_copy_dimensions"
+    bl_label = "Copy Dimensions"
+    bl_description = ""
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        props = context.scene.sloppy_props
+
+        props.cpt_dimensions = bpy.context.object.dimensions
+        print(props.cpt_dimensions)
+
+        return {"FINISHED"}
+
+class SloppyCopyTransform(bpy.types.Operator):
+    bl_idname = "operator.sloppy_copy_transform"
+    bl_label = "Copy Transform"
+    bl_description = ""
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        props = context.scene.sloppy_props
+
+        props.cpt_location = bpy.context.object.location
+        print(props.cpt_location)
+
+        if bpy.context.object.rotation_mode == 'QUATERNION':
+            quat = bpy.context.object.rotation_quaternion
+            props.cpt_rotation = mathutils.Vector((quat[0], quat[1], quat[2], quat[3]))
+            print(quat)
+        elif bpy.context.object.rotation_mode == 'AXIS_ANGLE':
+            axisangle = bpy.context.object.rotation_axis_angle
+            rot = mathutils.Matrix.Rotation(axisangle[0], 4, (axisangle[1], axisangle[2], axisangle[3]))
+            quat = rot.to_quaternion()
+            props.cpt_rotation = mathutils.Vector((quat[0], quat[1], quat[2], quat[3]))
+            print('Axis: X:', axisangle[1], ', Y:', axisangle[2], ', Z:', axisangle[3], '| Angle:', math.degrees(axisangle[0]),'->', quat)
+        else:
+            quat = bpy.context.object.rotation_euler.to_quaternion()
+            props.cpt_rotation = mathutils.Vector((quat[0], quat[1], quat[2], quat[3]))
+            print(bpy.context.object.rotation_euler, '->', quat)
+
+        props.cpt_scale = bpy.context.object.scale
+        print(props.cpt_scale)
+
+        return {"FINISHED"}
+    
+class SloppyPasteLocation(bpy.types.Operator):
+    bl_idname = "operator.sloppy_paste_location"
+    bl_label = "Paste Location"
+    bl_description = ""
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        props = context.scene.sloppy_props
+
+        bpy.context.object.location = props.cpt_location
+
+        return {"FINISHED"}
+
+class SloppyPasteRotation(bpy.types.Operator):
+    bl_idname = "operator.sloppy_paste_rotation"
+    bl_label = "Paste Rotation"
+    bl_description = ""
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        props = context.scene.sloppy_props
+
+        quat = mathutils.Quaternion((props.cpt_rotation[0], props.cpt_rotation[1], props.cpt_rotation[2], props.cpt_rotation[3]))
+
+        if bpy.context.object.rotation_mode == 'QUATERNION':
+            bpy.context.object.rotation_quaternion = quat
+            print(quat)
+        elif bpy.context.object.rotation_mode == 'AXIS_ANGLE':
+            axisangle = quat.to_axis_angle()
+            print(quat, '-->', axisangle)
+            bpy.context.object.rotation_axis_angle[0] = axisangle[1]
+            bpy.context.object.rotation_axis_angle[1] = axisangle[0][0]
+            bpy.context.object.rotation_axis_angle[1] = axisangle[0][1]
+            bpy.context.object.rotation_axis_angle[1] = axisangle[0][2]
+        else:
+            bpy.context.object.rotation_euler = quat.to_euler()
+            print(quat, '-->', quat.to_euler())
+
+        return {"FINISHED"}
+
+class SloppyPasteScale(bpy.types.Operator):
+    bl_idname = "operator.sloppy_paste_scale"
+    bl_label = "Paste Scale"
+    bl_description = ""
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        props = context.scene.sloppy_props
+
+        bpy.context.object.scale = props.cpt_scale
+
+        return {"FINISHED"}
+
+class SloppyPasteDimensions(bpy.types.Operator):
+    bl_idname = "operator.sloppy_paste_dimensions"
+    bl_label = "Paste Dimensions"
+    bl_description = ""
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        props = context.scene.sloppy_props
+
+        bpy.context.object.dimensions = props.cpt_dimensions
+
+        return {"FINISHED"}
+
+class SloppyPasteTransform(bpy.types.Operator):
+    bl_idname = "operator.sloppy_paste_transform"
+    bl_label = "Paste Transform"
+    bl_description = ""
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        props = context.scene.sloppy_props
+
+        bpy.context.object.location = props.cpt_location
+
+        quat = mathutils.Quaternion((props.cpt_rotation[0], props.cpt_rotation[1], props.cpt_rotation[2], props.cpt_rotation[3]))
+
+        if bpy.context.object.rotation_mode == 'QUATERNION':
+            bpy.context.object.rotation_quaternion = quat
+            print(quat)
+        elif bpy.context.object.rotation_mode == 'AXIS_ANGLE':
+            axisangle = quat.to_axis_angle()
+            print(quat, '-->', axisangle)
+            bpy.context.object.rotation_axis_angle[0] = axisangle[1]
+            bpy.context.object.rotation_axis_angle[1] = axisangle[0][0]
+            bpy.context.object.rotation_axis_angle[1] = axisangle[0][1]
+            bpy.context.object.rotation_axis_angle[1] = axisangle[0][2]
+        else:
+            bpy.context.object.rotation_euler = quat.to_euler()
+            print(quat, '-->', quat.to_euler())
+
+        bpy.context.object.scale = props.cpt_scale
+
+        return {"FINISHED"}
+
 #region Initialization
 classes = [SloppyProperties,
            SloppyErrorDialog,
@@ -3837,7 +4276,20 @@ classes = [SloppyProperties,
            SloppyBoundaryFirstUVUnfold,
            SloppyUVSmartAlign,
            SloppyBatchRender,
-           SloppyBRPanel
+           SloppyBRPanel,
+           SloppyExtraObjPropsPanel,
+           SloppyCopyFloatToClipboard,
+           SloppyCopyLocation,
+           SloppyCopyRotation,
+           SloppyCopyScale,
+           SloppyCopyDimensions,
+           SloppyCopyTransform,
+           SloppyPasteLocation,
+           SloppyPasteRotation,
+           SloppyPasteScale,
+           SloppyPasteDimensions,
+           SloppyPasteTransform,
+           SloppyCPTPanel
            ]
 
 def register():

@@ -2049,88 +2049,88 @@ class SloppyExtraObjPropsPanel(bpy.types.Panel):
                 row.prop(obj, "matrix_world", text="Z", index=14)
                 row.separator()
         
-        if obj.mode == "OBJECT":
-            copy_grid = row.grid_flow(columns=2)
+            if obj.mode == "OBJECT":
+                copy_grid = row.grid_flow(columns=2)
 
-            copy_grid.operator("operator.sloppy_copy_location")
-            copy_grid.operator("operator.sloppy_copy_rotation")
-            copy_grid.operator("operator.sloppy_copy_scale")
-            copy_grid.operator("operator.sloppy_copy_dimensions")
+                copy_grid.operator("operator.sloppy_copy_location")
+                copy_grid.operator("operator.sloppy_copy_rotation")
+                copy_grid.operator("operator.sloppy_copy_scale")
+                copy_grid.operator("operator.sloppy_copy_dimensions")
 
-            row.separator()
-            row.operator("operator.sloppy_copy_transform")
-            row.separator()
+                row.separator()
+                row.operator("operator.sloppy_copy_transform")
+                row.separator()
 
-            paste_grid = row.grid_flow(columns=2)
+                paste_grid = row.grid_flow(columns=2)
 
-            paste_grid.operator("operator.sloppy_paste_location")
-            paste_grid.operator("operator.sloppy_paste_rotation")
-            paste_grid.operator("operator.sloppy_paste_scale")
-            paste_grid.operator("operator.sloppy_paste_dimensions")
-            row.separator()
-            row.operator("operator.sloppy_paste_transform")
-            row.separator()
+                paste_grid.operator("operator.sloppy_paste_location")
+                paste_grid.operator("operator.sloppy_paste_rotation")
+                paste_grid.operator("operator.sloppy_paste_scale")
+                paste_grid.operator("operator.sloppy_paste_dimensions")
+                row.separator()
+                row.operator("operator.sloppy_paste_transform")
+                row.separator()
 
-            if props.delta_rotation_mode == "A":
-                row.prop(obj, "delta_rotation_euler", text="Delta Rotation")
-            else:
-                row.prop(obj, "delta_rotation_quaternion", text="Delta Rotation")
-            row.prop(props, "delta_rotation_mode", text="")
+                if props.delta_rotation_mode == "A":
+                    row.prop(obj, "delta_rotation_euler", text="Delta Rotation")
+                else:
+                    row.prop(obj, "delta_rotation_quaternion", text="Delta Rotation")
+                row.prop(props, "delta_rotation_mode", text="")
 
-        if obj.type == "CURVE":
-            total_curve_length = 0
-            row.separator()
-            row.label(text="Spline Lengths:")
-            roro = row.row(align=True)
-            rororo = roro.column(align=True)
-            roroco = roro.column(align=True)
-            roroop = roro.column(align=False)
-            for spli, spl in enumerate(obj.data.splines):
-                this_length = spl.calc_length()
-                total_curve_length += this_length
-                rororo.label(text=f"Spline {spli}:")
-                roroco.label(text=f"{this_length:.3f}")
-                this_op_props = roroop.operator("operator.sloppy_copy_to_clipboard")
-                this_op_props.copied_value = this_length
-            rororo.label(text=f"Total:")
-            roroco.label(text=f"{total_curve_length:.3f}")
-            tot_op_props = roroop.operator("operator.sloppy_copy_to_clipboard")
-            tot_op_props.copied_value = total_curve_length
+            if obj.type == "CURVE":
+                total_curve_length = 0
+                row.separator()
+                row.label(text="Spline Lengths:")
+                roro = row.row(align=True)
+                rororo = roro.column(align=True)
+                roroco = roro.column(align=True)
+                roroop = roro.column(align=False)
+                for spli, spl in enumerate(obj.data.splines):
+                    this_length = spl.calc_length()
+                    total_curve_length += this_length
+                    rororo.label(text=f"Spline {spli}:")
+                    roroco.label(text=f"{this_length:.3f}")
+                    this_op_props = roroop.operator("operator.sloppy_copy_to_clipboard")
+                    this_op_props.copied_value = this_length
+                rororo.label(text=f"Total:")
+                roroco.label(text=f"{total_curve_length:.3f}")
+                tot_op_props = roroop.operator("operator.sloppy_copy_to_clipboard")
+                tot_op_props.copied_value = total_curve_length
 
-        if obj.mode == "EDIT":
-            total_area = 0
-            selected_area = 0
-            total_edge_length = 0
-            rowr = row.row(align=True)
-            rowrow = rowr.column(align=True)
-            rowcow = rowr.column(align=True)
-            rowops = rowr.column(align=True)
-            for ob in bpy.context.objects_in_mode:
-                ob.update_from_editmode()
-                for pol in ob.data.polygons:
-                    total_area += pol.area
-                    if pol.select == True:
-                        selected_area += pol.area
-                for e in ob.data.edges:
-                    if e.select == True:
-                        v1 = e.id_data.vertices[e.vertices[0]]
-                        v2 = e.id_data.vertices[e.vertices[1]]
-                        total_edge_length += math.dist(v1.co, v2.co)
-            
-            rowrow.label(text=f"Total Area:")
-            rowcow.label(text=f"{total_area:.3f}")
-            totar_props = rowops.operator("operator.sloppy_copy_to_clipboard")
-            totar_props.copied_value = total_area
-            
-            rowrow.label(text=f"Selected Area:")
-            rowcow.label(text=f"{selected_area:.3f}")
-            selar_props = rowops.operator("operator.sloppy_copy_to_clipboard")
-            selar_props.copied_value = selected_area
-            
-            rowrow.label(text=f"Selected Edges Length:")
-            rowcow.label(text=f"{total_edge_length:.3f}")
-            totel_props = rowops.operator("operator.sloppy_copy_to_clipboard")
-            totel_props.copied_value = total_edge_length
+            if obj.mode == "EDIT":
+                total_area = 0
+                selected_area = 0
+                total_edge_length = 0
+                rowr = row.row(align=True)
+                rowrow = rowr.column(align=True)
+                rowcow = rowr.column(align=True)
+                rowops = rowr.column(align=True)
+                for ob in bpy.context.objects_in_mode:
+                    ob.update_from_editmode()
+                    for pol in ob.data.polygons:
+                        total_area += pol.area
+                        if pol.select == True:
+                            selected_area += pol.area
+                    for e in ob.data.edges:
+                        if e.select == True:
+                            v1 = e.id_data.vertices[e.vertices[0]]
+                            v2 = e.id_data.vertices[e.vertices[1]]
+                            total_edge_length += math.dist(v1.co, v2.co)
+                
+                rowrow.label(text=f"Total Area:")
+                rowcow.label(text=f"{total_area:.3f}")
+                totar_props = rowops.operator("operator.sloppy_copy_to_clipboard")
+                totar_props.copied_value = total_area
+                
+                rowrow.label(text=f"Selected Area:")
+                rowcow.label(text=f"{selected_area:.3f}")
+                selar_props = rowops.operator("operator.sloppy_copy_to_clipboard")
+                selar_props.copied_value = selected_area
+                
+                rowrow.label(text=f"Selected Edges Length:")
+                rowcow.label(text=f"{total_edge_length:.3f}")
+                totel_props = rowops.operator("operator.sloppy_copy_to_clipboard")
+                totel_props.copied_value = total_edge_length
 
 class SloppyCPTPanel(bpy.types.Panel):
     bl_idname = "UV_PT_SloppyCPTPanel"

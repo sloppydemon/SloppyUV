@@ -2031,21 +2031,23 @@ class SloppyExtraObjPropsPanel(bpy.types.Panel):
         layout = self.layout
         context = bpy.context
         obj = context.object
-        parent = obj.parent
+        parent = None
         row = layout.column(align=True)
         row.scale_y = 0.8
 
-        if parent:
-            row.label(text="Parent Inverse Location:")
-            row.prop(obj, "matrix_parent_inverse", text="X", index=12)
-            row.prop(obj, "matrix_parent_inverse", text="Y", index=13)
-            row.prop(obj, "matrix_parent_inverse", text="Z", index=14)
-            row.separator()
-            row.label(text="World Location:")
-            row.prop(obj, "matrix_world", text="X", index=12)
-            row.prop(obj, "matrix_world", text="Y", index=13)
-            row.prop(obj, "matrix_world", text="Z", index=14)
-            row.separator()
+        if obj:
+            parent = obj.parent
+            if parent:
+                row.label(text="Parent Inverse Location:")
+                row.prop(obj, "matrix_parent_inverse", text="X", index=12)
+                row.prop(obj, "matrix_parent_inverse", text="Y", index=13)
+                row.prop(obj, "matrix_parent_inverse", text="Z", index=14)
+                row.separator()
+                row.label(text="World Location:")
+                row.prop(obj, "matrix_world", text="X", index=12)
+                row.prop(obj, "matrix_world", text="Y", index=13)
+                row.prop(obj, "matrix_world", text="Z", index=14)
+                row.separator()
         
         if obj.mode == "OBJECT":
             copy_grid = row.grid_flow(columns=2)
